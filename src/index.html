@@ -63,6 +63,11 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .map text.small{font-size:12px;font-weight:500}
 .map .dot{fill:var(--accent);stroke:#000;stroke-width:2}
 .map .hub polygon:first-child{stroke:#fff;stroke-width:3}
+.map .apath{fill:none;stroke:var(--auto);stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.map .apt{fill:var(--auto);stroke:#fff;stroke-width:2} .map .apt.start{fill:#2ecc71}
+.map text.num{font-size:11px;stroke-width:2px}
+.cover{display:inline-block;min-width:34px;text-align:center;border-radius:6px;padding:1px 6px;background:var(--panel2)}
+.cover.full{background:#1f5a34} .cover.none{background:#5a2424}
 /* tables */
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
@@ -85,7 +90,7 @@ td .r{color:var(--red);font-weight:700} td .b{color:var(--blue);font-weight:700}
 /* dialog */
 dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:16px;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 40px)}
 dialog::backdrop{background:#000a}
-.qrbox{background:#fff;border-radius:12px;padding:10px;margin:10px auto;max-width:420px}
+.qrbox{background:#fff;border-radius:12px;padding:10px;margin:10px auto;max-width:min(560px,70vh)}
 .qrbox svg{width:100%;height:auto;display:block}
 #scanVideo{width:100%;border-radius:12px;background:#000;max-height:60vh}
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120px);background:var(--accent);color:var(--accent-ink);padding:12px 18px;border-radius:12px;font-weight:600;transition:transform .25s;z-index:100;max-width:calc(100vw - 32px)}
@@ -133,8 +138,10 @@ details.form[open] summary{margin-bottom:6px}
     <button data-view="sched">Schedule</button>
     <button data-view="match">Match</button>
     <button data-view="pit">Pit</button>
+    <button data-view="pre" id="navPre">Pre-event</button>
     <button data-view="data">Data</button>
     <button data-view="rank">Rank</button>
+    <button data-view="scouts">Scouts</button>
     <button data-view="drive">Drive Team</button>
     <button data-view="guide">Field Guide</button>
     <button data-view="sync">Sync &amp; Settings</button>
@@ -153,6 +160,13 @@ details.form[open] summary{margin-bottom:6px}
     <p class="hint">Tap a team to start scouting it in that match. ✓ = already scouted on this device. Your team is outlined.</p>
   </section>
   <section class="view" id="view-pit"><form data-model="pit" id="pitForm" onsubmit="return false"></form></section>
+  <section class="view" id="view-pre"><form data-model="pre" id="preForm" onsubmit="return false"></form></section>
+  <section class="view" id="view-scouts">
+    <div class="card"><h2>Scouts</h2><div class="tablewrap"><table id="scoutTable"></table></div>
+      <p class="hint">Everything saved on this device, by who scouted it. Sync first to see the whole team's work.</p></div>
+    <div class="card"><h2>Match coverage</h2><p class="hint" id="coverNote" style="margin-top:0"></p><div class="tablewrap"><table class="sched" id="coverTable"></table></div></div>
+    <div class="card"><h2>Pit coverage</h2><div id="pitCover"></div></div>
+  </section>
 
   <section class="view" id="view-data">
     <div class="row" style="margin-bottom:10px">
@@ -224,6 +238,9 @@ details.form[open] summary{margin-bottom:6px}
         <div class="field"><label>Our team #</label><input type="text" inputmode="numeric" data-setting="ourTeam"></div>
         <div class="field"><label>The Blue Alliance read key <small>for the Schedule tab</small></label><input type="text" data-setting="tbaKey" autocomplete="off" placeholder="Paste key">
           <p class="hint">Free: sign in at thebluealliance.com/account and add a Read API key.</p></div>
+        <div class="field"><label>Pre-event scouting <small>offseason, or week 2 on</small></label>
+          <label class="row" style="color:var(--text)"><input type="checkbox" data-setting="preEvent" style="width:22px;height:22px"> Show the Pre-event tab</label>
+          <p class="hint">For scouting teams from videos and past events before you get there. Week 1 teams haven't played yet, so leave it off then.</p></div>
         <div class="field"><label>After saving a match</label>
           <label class="row" style="color:var(--text)"><input type="checkbox" data-setting="qrAfterSave" style="width:22px;height:22px"> Show its QR code right away</label></div>
       </div>
@@ -247,7 +264,7 @@ details.form[open] summary{margin-bottom:6px}
 /* ================= storage ================= */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const K = { matches: 'frcs.matches', pits: 'frcs.pits', settings: 'frcs.settings', draft: 'frcs.draft', pitDraft: 'frcs.pitDraft', ui: 'frcs.ui' };
+const K = { matches: 'frcs.matches', pits: 'frcs.pits', settings: 'frcs.settings', draft: 'frcs.draft', pitDraft: 'frcs.pitDraft', pre: 'frcs.pre', preDraft: 'frcs.preDraft', ui: 'frcs.ui' };
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast('⚠ Could not save. Storage is full or blocked. Export your data!'); return false; } }
@@ -259,9 +276,10 @@ const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
 const setP = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k] ??= {}, o)[last] = v; };
 const parseVal = s => s === 'true' ? true : s === 'false' ? false : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
 
-let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
+let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', preEvent: false, qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
 let matches = LS.get(K.matches, []);
 let pits = LS.get(K.pits, []);
+let pres = LS.get(K.pre, []);
 const ui = Object.assign({ view: 'match', dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
 const saveSettings = () => LS.set(K.settings, settings);
 const saveUI = () => LS.set(K.ui, ui);
@@ -272,7 +290,7 @@ function blankMatch() {
   return {
     kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
     match: '', team: '', alliance: '', station: '', robotType: '',
-    auto: { preload: null, collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
+    auto: { preload: null, path: [], collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
     tele: { collected: null, acc: null, scored: null, beached: null, beachWhere: [], recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
     end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
     extra: { penalties: 0, penKinds: [], penNotes: '', breakdown: null, comeback: null, brkNotes: '', problems: [], probNotes: '', driver: null, strategy: '', overall: '' }
@@ -283,6 +301,15 @@ function blankPit() {
     kind: 'pit', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event, team: '',
     robotName: '', drivers: '', photo: '', drive: null, intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
     beachRisk: null, strengths: '', problems: [], probNotes: '', strategy: '', notes: ''
+  };
+}
+// Scouting a team before the event, from match videos and past results.
+// Only useful once teams have played: offseason, or week 2 on.
+function blankPre() {
+  return {
+    kind: 'pre', v: 1, id: '', ts: 0, scouter: settings.scouter, team: '', source: [], watched: '', robotType: '', drive: null,
+    autoScore: null, autoNotes: '', teleScore: null, acc: null, climbMax: null, defense: null, reliable: null,
+    strengths: '', weaknesses: '', strategy: '', priority: null, notes: ''
   };
 }
 // fill in any keys missing from older saved drafts/entries
@@ -304,10 +331,12 @@ function ballsYN(m) {
 }
 matches.forEach(m => ballsYN(upgrade(m, blankMatch())));
 pits.forEach(p => upgrade(p, blankPit()));
+pres.forEach(p => upgrade(p, blankPre()));
 let cur = ballsYN(upgrade(LS.get(K.draft, null) || blankMatch(), blankMatch()));
 let curPit = upgrade(LS.get(K.pitDraft, null) || blankPit(), blankPit());
-const model = n => n === 'match' ? cur : curPit;
-const persistDraft = n => n === 'match' ? LS.set(K.draft, cur) : LS.set(K.pitDraft, curPit);
+let curPre = upgrade(LS.get(K.preDraft, null) || blankPre(), blankPre());
+const model = n => n === 'match' ? cur : n === 'pit' ? curPit : curPre;
+const persistDraft = n => n === 'match' ? LS.set(K.draft, cur) : n === 'pit' ? LS.set(K.pitDraft, curPit) : LS.set(K.preDraft, curPre);
 
 const YN = [['true', 'Yes'], ['false', 'No']];
 const ACC = [['0', '~0%'], ['25', '~25%'], ['50', '~50%'], ['75', '~75%'], ['100', '~100%']];
@@ -318,6 +347,7 @@ const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinni
 const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
 const ROBOT_TYPES = ['Under trench', 'Over bump', 'Both'];
 const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
+const PRE_SOURCES = ['Match video', 'Blue Alliance / Statbotics', 'Talked to team', 'Saw them in person', 'Other'];
 
 /* ================= field map =================
    Schematic only. Edit the rectangles to match this season's field. */
@@ -343,7 +373,8 @@ const FIELD = {
 };
 const hexPts = (h, r = h.r) => [0, 1, 2, 3, 4, 5].map(i => { const a = Math.PI / 3 * i + Math.PI / 6; return `${(h.x + r * Math.cos(a)).toFixed(1)},${(h.y + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
 const hubAt = (x, y) => FIELD.hubs.find(h => Math.hypot(x - h.x, y - h.y) <= h.r);
-function fieldSVG(id) {
+// marks: SVG drawn on top (auto paths in a team profile); id-less maps aren't tappable
+function fieldSVG(id, marks = '') {
   const z = FIELD.zones.slice().reverse().map(r =>
     `<rect class="zone" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${r.fill}" rx="4"/>`).join('');
   const labels = FIELD.zones.map(r => {
@@ -353,11 +384,11 @@ function fieldSVG(id) {
     if (r.name === 'Ladder') return `<text class="small" x="${r.x + r.w / 2}" y="${cy}" transform="rotate(-90 ${r.x + r.w / 2} ${cy})">${r.label}</text>`;
     return `<text class="${big ? '' : 'small'}" x="${r.x + r.w / 2}" y="${cy}">${r.label}</text>`;
   }).join('');
-  return `<svg class="map" id="${id}" viewBox="0 0 ${FIELD.w} ${FIELD.h}" role="img" aria-label="Field map">
+  return `<svg class="map" ${id ? `id="${id}"` : ''} viewBox="0 0 ${FIELD.w} ${FIELD.h}" role="img" aria-label="Field map">
     <rect x="2" y="2" width="${FIELD.w - 4}" height="${FIELD.h - 4}" fill="none" stroke="#fff" stroke-width="3" rx="8"/>
     ${z}<line x1="410" y1="10" x2="410" y2="390" stroke="#ffffff66" stroke-dasharray="8 6"/>${labels}
     ${FIELD.hubs.map(h => `<g class="hub"><polygon points="${hexPts(h)}" fill="${h.fill}"/><polygon points="${hexPts(h, h.r * 0.55)}" fill="#0006" stroke="#fff8" stroke-width="2"/><text class="small" x="${h.x}" y="${h.y + h.r + 18}">${h.label}</text></g>`).join('')}
-    <g class="dots"></g></svg>`;
+    <g class="dots">${marks}</g></svg>`;
 }
 const zoneAt = (x, y) => (FIELD.zones.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) || {}).name;
 
@@ -369,7 +400,8 @@ const chips = (k, label, opts) => `<div class="field wide"><label>${label}</labe
 const text = (k, label, ph = '', rows = 2) => `<div class="field wide"><label>${label}</label><textarea data-k="${k}" rows="${rows}" placeholder="${esc(ph)}"></textarea></div>`;
 const input = (k, label, ph = '', numeric = false) => `<div class="field"><label>${label}</label><input type="text" data-k="${k}" placeholder="${esc(ph)}" ${numeric ? 'inputmode="numeric" pattern="[0-9]*"' : ''} autocomplete="off"></div>`;
 const select = (k, label, opts) => `<div class="field"><label>${label}</label><select data-k="${k}"><option value="">Pick one…</option>${opts.map(o => `<option>${esc(o)}</option>`).join('')}</select></div>`;
-const showIf = (k, html) => `<div class="grid" data-show="${k}" style="grid-column:1/-1">${html}</div>`;
+// only shown while the answer at k is eq (Yes by default)
+const showIf = (k, html, eq = 'true') => `<div class="grid" data-show="${k}" data-eq="${eq}" style="grid-column:1/-1">${html}</div>`;
 
 $('#matchForm').innerHTML = `
 <div class="card"><h2>Match info</h2><div class="grid">
@@ -381,12 +413,14 @@ $('#matchForm').innerHTML = `
 
 <div class="card sec-auto"><h2><span class="tag">AUTO</span> First 15–20 seconds</h2><div class="grid">
   ${seg('auto.preload', 'Preloaded?', YN, '', 'started holding a ball')}
+  <div class="field wide"><label>Auto path <small>tap where it started, then each place it went</small></label>${fieldSVG('autoMap')}
+    <div class="row" style="margin-top:6px"><button type="button" class="btn small" id="pathUndo">Undo point</button><button type="button" class="btn small" id="pathClear">Clear path</button><span class="hint" style="margin:0">Green = start.</span></div></div>
   ${seg('auto.collected', 'Balls collected?', YN)}
   ${counter('auto.cycles', 'Cycles', [1], 'collect → score = 1')}
   ${seg('auto.acc', 'Scoring accuracy', ACC)}
   ${seg('auto.scored', 'Balls scored?', YN)}
   ${seg('auto.hang', 'Hang in auto?', YN)}
-  ${seg('auto.down', 'Got back down?', YN)}
+  ${showIf('auto.hang', seg('auto.down', 'Got back down?', YN))}
   ${text('auto.notes', 'Auto notes', 'Path, where it started, what went right or wrong…')}
 </div></div>
 
@@ -407,7 +441,7 @@ $('#matchForm').innerHTML = `
   ${counter('end.cycles', 'Cycles', [1])}
   ${seg('end.acc', 'Scoring accuracy', ACC)}
   ${seg('end.climb', 'Climb', CLIMB)}
-  ${seg('end.rung', 'Rung #', [['1', '1'], ['2', '2'], ['3', '3']])}
+  ${showIf('end.climb', seg('end.rung', 'Rung #', [['1', '1'], ['2', '2'], ['3', '3']]), 'ok')}
   ${text('end.notes', 'Endgame notes', 'How long did the climb take? Did they need help? Did they fall?')}
 </div></div>
 
@@ -437,7 +471,7 @@ $('#pitForm').innerHTML = `
     <img id="pitPhotoImg" class="robotpic" alt="Robot photo"></div>
   ${seg('drive', 'Drivetrain', [['Swerve', 'Swerve'], ['Tank', 'Tank'], ['Mecanum', 'Mecanum'], ['Other', 'Other']])}
   ${seg('intake', 'Collects balls from', [['Ground', 'Ground'], ['Depot', 'Depot'], ['Both', 'Both'], ['None', 'None']])}
-  ${counter('capacity', 'Balls it can hold', [1, 5])}
+  ${counter('capacity', 'Balls it can hold', [1, 5, 10])}
   ${seg('climbMax', 'Highest rung', [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3']])}
   ${seg('canGetDown', 'Can get back down?', YN)}
   ${seg('beachRisk', 'Gets beached / stuck often?', YN)}
@@ -452,6 +486,36 @@ $('#pitForm').innerHTML = `
 <div class="savebar"><button type="button" class="btn primary" id="btnSavePit">Save pit entry</button><button type="button" class="btn" id="btnResetPit">Reset</button></div>
 <div class="card"><h2>Pit entries on this device</h2><div id="pitList" class="row"></div></div>`;
 
+$('#preForm').innerHTML = `
+<div class="card"><h2>Pre-event scouting</h2>
+<p class="hint" style="margin-top:0">Scout a team before the event from match videos and past results. Offseason, or week 2 on, once teams have played.</p><div class="grid">
+  ${input('team', 'Team #', 'e.g. 254', true)}${input('scouter', 'Scouter')}
+  ${chips('source', 'Where is this from?', PRE_SOURCES)}
+  ${input('watched', 'Events / matches watched', 'e.g. 2026miket Q12, Q30')}
+  ${select('robotType', 'Robot type', ROBOT_TYPES)}
+  ${seg('drive', 'Drivetrain', [['Swerve', 'Swerve'], ['Tank', 'Tank'], ['Mecanum', 'Mecanum'], ['Other', 'Other']])}
+</div></div>
+<div class="card sec-auto"><h2><span class="tag">AUTO</span></h2><div class="grid">
+  ${seg('autoScore', 'Scores in auto?', YN)}
+  ${text('autoNotes', 'What does their auto do?', 'Start spot, path, how many balls, does it hang?')}
+</div></div>
+<div class="card sec-tele"><h2><span class="tag">TELEOP</span> &amp; <span class="tag" style="background:var(--end)">ENDGAME</span></h2><div class="grid">
+  ${seg('teleScore', 'Scores in teleop?', YN)}
+  ${seg('acc', 'Usual accuracy', ACC)}
+  ${seg('climbMax', 'Highest rung seen', [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3']])}
+  ${seg('defense', 'Plays defense?', YN)}
+  ${seg('reliable', 'Reliable?', YN, '', 'rarely breaks down')}
+</div></div>
+<div class="card sec-extra"><h2><span class="tag">SUMMARY</span></h2><div class="grid">
+  ${text('strengths', 'Strengths')}
+  ${text('weaknesses', 'Weaknesses')}
+  ${text('strategy', 'Their strategy', 'What do they usually do in a match?')}
+  ${seg('priority', 'Worth watching at the event?', [['high', 'Must watch'], ['med', 'Maybe'], ['low', 'Not really']])}
+  ${text('notes', 'Other notes')}
+</div></div>
+<div class="savebar"><button type="button" class="btn primary" id="btnSavePre">Save pre-event entry</button><button type="button" class="btn" id="btnResetPre">Reset</button></div>
+<div class="card"><h2>Pre-event entries on this device</h2><div id="preList" class="row"></div></div>`;
+
 /* ================= form behaviour ================= */
 function renderForm(form) {
   const m = model(form.dataset.model);
@@ -462,10 +526,12 @@ function renderForm(form) {
     else if (el.classList.contains('chips')) $$('button', el).forEach(b => b.classList.toggle('on', (v || []).includes(b.dataset.v)));
     else if (document.activeElement !== el) el.value = v ?? '';
   });
-  $$('[data-show]', form).forEach(el => el.hidden = getP(m, el.dataset.show) !== true);
+  $$('[data-show]', form).forEach(el => el.hidden = getP(m, el.dataset.show) !== parseVal(el.dataset.eq));
   if (form.dataset.model === 'match') {
-    drawDots();
+    drawDots(); drawPath();
     $('#editBanner').hidden = !(cur.id && matches.some(x => x.id === cur.id));
+  } else if (form.dataset.model === 'pre') {
+    renderPreList();
   } else {
     renderPitList();
     const img = $('#pitPhotoImg'); img.hidden = !curPit.photo; if (curPit.photo) img.src = curPit.photo;
@@ -486,6 +552,11 @@ document.addEventListener('click', e => {
     if (k === 'end.rung' && getP(m, k) != null && m.end.climb == null) m.end.climb = 'ok';
     if (k === 'extra.penKinds' && m.extra.penKinds.length > m.extra.penalties) m.extra.penalties = m.extra.penKinds.length;
     if (k === 'tele.defZones' && m.tele.defZones.length) m.tele.defense = true;
+    // follow-up answers go when the question they hang off is undone
+    if (k === 'auto.hang' && m.auto.hang !== true) m.auto.down = null;
+    if (k === 'end.climb' && m.end.climb !== 'ok') m.end.rung = null;
+    if (k === 'tele.defense' && m.tele.defense !== true) { m.tele.defZones = []; m.tele.defDots = []; }
+    if (k === 'tele.beached' && m.tele.beached !== true) { m.tele.beachWhere = []; m.tele.recovered = null; }
   }
   persistDraft(name); renderForm(form);
 });
@@ -500,10 +571,13 @@ const onFieldInput = e => {
     settings[k] = el.value.trim(); saveSettings();
     $$(`[data-setting="${k}"]`).forEach(x => x.value = settings[k]);
     // and onto the other form, so Match and Pit always carry the same name
-    const other = form.dataset.model === 'match' ? 'pit' : 'match';
-    if (k in model(other)) { model(other)[k] = settings[k]; persistDraft(other); renderForm($('#' + other + 'Form')); }
+    for (const other of ['match', 'pit', 'pre'].filter(n => n !== form.dataset.model))
+      if (k in model(other)) { model(other)[k] = settings[k]; persistDraft(other); renderForm($('#' + other + 'Form')); }
   }
-  if (el.dataset.setting) { settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings(); }
+  if (el.dataset.setting) {
+    settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings();
+    if (el.dataset.setting === 'preEvent') $('#navPre').hidden = !settings.preEvent;
+  }
 };
 document.addEventListener('input', onFieldInput);
 document.addEventListener('change', e => { if (e.target.tagName === 'SELECT') onFieldInput(e); });
@@ -532,7 +606,26 @@ $('#defMap').addEventListener('click', e => {
   persistDraft('match'); renderForm($('#matchForm'));
 });
 $('#dotUndo').onclick = () => { cur.tele.defDots.pop(); persistDraft('match'); drawDots(); };
-$('#dotClear').onclick = () => { cur.tele.defDots = []; persistDraft('match'); drawDots(); };
+// clearing the map clears the zones it picked too
+$('#dotClear').onclick = () => { cur.tele.defDots = []; cur.tele.defZones = []; persistDraft('match'); renderForm($('#matchForm')); };
+
+// auto path: the start, then each place the robot went, in order
+function pathSVG(path, num = true) {
+  if (!path || !path.length) return '';
+  const line = path.length > 1 ? `<polyline class="apath" points="${path.map(p => p.join(',')).join(' ')}"/>` : '';
+  return line + path.map(([x, y], i) => `<circle class="apt${i ? '' : ' start'}" cx="${x}" cy="${y}" r="${i ? 9 : 12}"/>${num ? `<text class="num" x="${x}" y="${y + 4}">${i ? i : 'S'}</text>` : ''}`).join('');
+}
+function drawPath() { const g = $('#autoMap .dots'); if (g) g.innerHTML = pathSVG(cur.auto.path); }
+$('#autoMap').addEventListener('click', e => {
+  const svg = e.currentTarget, pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const x = Math.round(p.x), y = Math.round(p.y);
+  if (hubAt(x, y)) return toast("That's the hub. Tap next to it.");
+  cur.auto.path.push([x, y]); persistDraft('match'); drawPath();
+});
+$('#pathUndo').onclick = () => { cur.auto.path.pop(); persistDraft('match'); drawPath(); };
+$('#pathClear').onclick = () => { cur.auto.path = []; persistDraft('match'); drawPath(); };
 
 function upsert(list, entry) { const i = list.findIndex(x => x.id === entry.id); i >= 0 ? list[i] = entry : list.push(entry); }
 const cleanTeam = t => String(t ?? '').replace(/\D/g, '');
@@ -611,6 +704,38 @@ $('#pitPhoto').onchange = async e => {
 };
 $('#pitPhotoDel').onclick = () => { curPit.photo = ''; persistDraft('pit'); renderForm($('#pitForm')); };
 
+// pre-event: one entry per team per scout, like pit
+$('#btnSavePre').onclick = () => {
+  curPre.team = cleanTeam(curPre.team);
+  if (!curPre.team) return toast('Enter a team number');
+  const me = String(curPre.scouter || '').trim().toLowerCase();
+  const mine = me && pres.find(p => p.team === curPre.team && String(p.scouter || '').trim().toLowerCase() === me);
+  if (!curPre.id && mine) {
+    const blank = v => v == null || v === '' || (Array.isArray(v) && !v.length);
+    for (const [k, v] of Object.entries(mine)) if (blank(curPre[k]) && !blank(v)) curPre[k] = clone(v);
+  }
+  curPre.id = curPre.id || (mine && mine.id) || uid();
+  curPre.ts = Date.now();
+  const saved = clone(curPre);
+  upsert(pres, saved);
+  if (!LS.set(K.pre, pres)) return;
+  curPre = blankPre(); persistDraft('pre'); renderForm($('#preForm')); updateCount();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`Saved pre-event entry for ${saved.team}`);
+  if (settings.qrAfterSave) showQR([saved], 0);
+};
+$('#btnResetPre').onclick = () => { if (!confirm('Clear this form?')) return; curPre = blankPre(); persistDraft('pre'); renderForm($('#preForm')); };
+function renderPreList() {
+  const el = $('#preList'); if (!el) return;
+  el.innerHTML = pres.length ? pres.slice().sort((a, b) => a.team - b.team).map(p => `<button type="button" class="btn small" data-pre="${esc(p.id)}">${esc(p.team)}${p.scouter ? ` <span class="muted">· ${esc(p.scouter)}</span>` : ''}</button>`).join('') : '<span class="muted">None yet</span>';
+}
+$('#preList').addEventListener('click', e => {
+  const b = e.target.closest('[data-pre]'); if (!b) return;
+  curPre = upgrade(clone(pres.find(p => p.id === b.dataset.pre)), blankPre());
+  persistDraft('pre'); renderForm($('#preForm')); window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`Editing pre-event entry for ${curPre.team}`);
+});
+
 // A first draft of the overall summary, written from the answers on the form.
 // The scout edits it and adds whether they'd work well with us.
 function autoSummary(m) {
@@ -620,7 +745,7 @@ function autoSummary(m) {
   const out = [`Team ${m.team || '?'}${m.match ? ` in match ${m.match}` : ''}${about ? ` (${about})` : ''}.`];
   const scored = (v, acc) => v === true ? `scored${acc != null ? ` (~${acc}%)` : ''}` : v === false ? "didn't score" : '';
   const a = m.auto;
-  const auto = list([a.preload === true && 'preloaded', a.collected === true ? 'collected balls' : a.collected === false && "didn't collect",
+  const auto = list([a.preload === true && 'preloaded', (a.path || []).length > 1 && `drove a ${a.path.length - 1}-leg path`, a.collected === true ? 'collected balls' : a.collected === false && "didn't collect",
     scored(a.scored, a.acc), +a.cycles > 0 && `${a.cycles} cycle${a.cycles > 1 ? 's' : ''}`,
     a.hang === true ? `hung${a.down === true ? ' and got back down' : a.down === false ? " but didn't get down" : ''}` : '']);
   if (auto) out.push(`Auto: ${auto}.`);
@@ -667,7 +792,7 @@ function teamStats(team) {
   const count = f => ms.filter(f).length;
   const climbs = ms.filter(m => m.end.climb === 'ok');
   return {
-    team, n: ms.length, ms, pits: pits.filter(p => p.team === team).sort((a, b) => b.ts - a.ts),
+    team, n: ms.length, ms, pits: pits.filter(p => p.team === team).sort((a, b) => b.ts - a.ts), pres: pres.filter(p => p.team === team).sort((a, b) => b.ts - a.ts),
     // matches where they did it
     autoPre: count(m => m.auto.preload === true), autoCol: count(m => m.auto.collected === true), autoScr: count(m => m.auto.scored === true),
     teleCol: count(m => m.tele.collected === true), teleScr: count(m => m.tele.scored === true),
@@ -686,7 +811,7 @@ function teamStats(team) {
     problems: tally(ms.flatMap(m => m.extra.problems)), driver: avg(ms.map(m => m.extra.driver))
   };
 }
-const allTeams = () => [...new Set([...matches.map(m => m.team), ...pits.map(p => p.team)])].filter(Boolean);
+const allTeams = () => [...new Set([...matches.map(m => m.team), ...pits.map(p => p.team), ...pres.map(p => p.team)])].filter(Boolean);
 
 // plain-English sentences, so the drive team doesn't have to read numbers
 function blurb(s) {
@@ -805,11 +930,34 @@ function openTeam(team) {
     <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
     ${profileBlock(s)}
     ${writtenBlock(s.ms)}
+    ${autoMapBlock(s.ms)}
+    ${s.pres.length ? `<h3>Before the event${s.pres.length > 1 ? ` <span class="muted" style="font-weight:400;font-size:14px">(${s.pres.length} scouts)</span>` : ''}</h3>${preBlock(s.pres)}` : ''}
     <h3>Pit scouting${s.pits.length > 1 ? ` <span class="muted" style="font-weight:400;font-size:14px">(${s.pits.length} scouts, combined)</span>` : ''}</h3>${pitBlock(s.pits)}
     <h3>Match forms (${forms.length})</h3>
     ${forms.length ? `<p class="hint" style="margin-top:-6px">Tap a match to see the whole form.</p>${forms.map(m => `<details class="form">
       <summary><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span></summary>
       ${matchDetail(m)}<div class="row">${formButtons('match', m.id)}</div></details>`).join('')}` : '<p class="muted">None yet.</p>'}`);
+}
+// every auto path this team has run, on one map, so the usual start spot shows
+function autoMapBlock(ms) {
+  const runs = ms.filter(m => (m.auto.path || []).length);
+  if (!runs.length) return '';
+  return `<h3>Auto paths (${runs.length})</h3>${fieldSVG('', runs.map(m => `<g opacity="${runs.length > 1 ? 0.75 : 1}">${pathSVG(m.auto.path, false)}</g>`).join(''))}
+    <p class="hint">Green = where it started. ${runs.length > 1 ? 'Each line is one match: ' + runs.map(m => 'M' + esc(m.match)).join(', ') + '.' : 'Match ' + esc(runs[0].match) + '.'}</p>`;
+}
+// pre-event entries: each scout's view, with who wrote it
+function preBlock(list) {
+  const PRI = { high: 'Must watch', med: 'Maybe watch', low: 'Not a priority' };
+  return list.map(p => {
+    const facts = [p.robotType, p.drive && p.drive + ' drive', p.autoScore != null && (p.autoScore ? 'scores in auto' : 'no auto scoring'),
+      p.teleScore != null && (p.teleScore ? `scores in teleop${p.acc != null ? ` (~${p.acc}%)` : ''}` : "doesn't score in teleop"),
+      p.climbMax != null && (+p.climbMax ? `climbs to rung ${p.climbMax}` : 'no climb'), p.defense === true && 'plays defense',
+      p.reliable != null && (p.reliable ? 'reliable' : '<span class="flag">breaks down</span>'), p.priority && `<b>${PRI[p.priority]}</b>`].filter(Boolean);
+    const q = [['Auto', p.autoNotes], ['Strengths', p.strengths], ['Weaknesses', p.weaknesses], ['Strategy', p.strategy], ['Notes', p.notes]].filter(x => x[1] && x[1].trim())
+      .map(([k, v]) => `<div class="quote"><b>${k}:</b> ${esc(v)}</div>`).join('');
+    return `<div style="margin:8px 0"><p class="muted" style="margin:0">${esc(p.scouter || 'Unknown scout')}${p.source.length ? ' · from ' + esc(p.source.join(', ').toLowerCase()) : ''}${p.watched ? ' · ' + esc(p.watched) : ''}</p>
+      ${facts.length ? `<p style="margin:4px 0">${facts.map(f => f.startsWith('<') ? f : esc(f)).join(' · ')}</p>` : ''}${q}<div class="row">${formButtons('pre', p.id)}</div></div>`;
+  }).join('');
 }
 // Every written answer from every match, grouped by question, so nothing a
 // scout wrote is hidden inside a single form.
@@ -827,6 +975,7 @@ function writtenBlock(ms) {
 // The answers on one match form, in the order the form asks them.
 function matchDetail(m) {
   return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
+    ${(m.auto.path || []).length ? `<div style="max-width:420px">${fieldSVG('', pathSVG(m.auto.path))}</div>` : ''}
     <p><b>Auto:</b> preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `${(m.tele.beachWhere || []).length ? ' (' + esc(m.tele.beachWhere.join(', ')) + ')' : ''}, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
@@ -841,8 +990,12 @@ function openMatch(id) {
     <div class="row" style="margin-top:12px">${formButtons('match', m.id)}<button class="btn small" data-act="team" data-id="${esc(m.team)}">Team ${esc(m.team)} summary</button></div>`);
 }
 // Edit loads the saved form back into Match or Pit; saving there overwrites it.
+const listOf = kind => kind === 'pit' ? pits : kind === 'pre' ? pres : matches;
 function editForm(kind, id) {
-  if (kind === 'pit') {
+  if (kind === 'pre') {
+    const p = pres.find(x => x.id === id); if (!p) return;
+    curPre = upgrade(clone(p), blankPre()); persistDraft('pre'); renderForm($('#preForm'));
+  } else if (kind === 'pit') {
     const p = pits.find(x => x.id === id); if (!p) return;
     curPit = upgrade(clone(p), blankPit()); persistDraft('pit'); renderForm($('#pitForm'));
   } else {
@@ -853,21 +1006,22 @@ function editForm(kind, id) {
   toast('Editing: change anything, then save to overwrite it');
 }
 function deleteForm(kind, id) {
-  const list = kind === 'pit' ? pits : matches, e = list.find(x => x.id === id); if (!e) return;
-  if (!confirm(kind === 'pit' ? `Delete the pit entry for team ${e.team}?` : `Delete team ${e.team} match ${e.match}?`)) return;
+  const e = listOf(kind).find(x => x.id === id); if (!e) return;
+  if (!confirm(kind === 'match' ? `Delete team ${e.team} match ${e.match}?` : `Delete the ${kind === 'pit' ? 'pit' : 'pre-event'} entry for team ${e.team}?`)) return;
   if (kind === 'pit') { pits = pits.filter(x => x.id !== id); LS.set(K.pits, pits); }
+  else if (kind === 'pre') { pres = pres.filter(x => x.id !== id); LS.set(K.pre, pres); }
   else { matches = matches.filter(x => x.id !== id); LS.set(K.matches, matches); }
   updateCount(); refreshViews();
   toast('Deleted');
   // stay on the team if it still has anything, so several can be cleaned up in a row
-  if (matches.some(x => x.team === e.team) || pits.some(x => x.team === e.team)) openTeam(e.team); else closeDialog();
+  if (allTeams().includes(e.team)) openTeam(e.team); else closeDialog();
 }
 $('#dlgBody').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const { act, kind, id } = b.dataset;
   if (act === 'edit') editForm(kind, id);
   else if (act === 'del') deleteForm(kind, id);
-  else if (act === 'qr') showQR([(kind === 'pit' ? pits : matches).find(x => x.id === id)].filter(Boolean), 0);
+  else if (act === 'qr') showQR([listOf(kind).find(x => x.id === id)].filter(Boolean), 0);
   else if (act === 'team') openTeam(id);
 });
 
@@ -1004,6 +1158,50 @@ $('#schedTable').onclick = e => {
   toast(`Scouting team ${team} in Q${match}`);
 };
 
+/* ================= scout dashboard ================= */
+// Who has scouted what, and what's still missing. Coverage uses the loaded
+// schedule, so it needs the Schedule tab loaded once.
+function renderScouts() {
+  const who = new Map();
+  const add = (e, k) => {
+    const name = String(e.scouter || '').trim() || 'Unknown', key = name.toLowerCase();
+    const r = who.get(key) || who.set(key, { name, match: 0, pit: 0, pre: 0, last: 0, teams: new Set() }).get(key);
+    r[k]++; r.last = Math.max(r.last, e.ts || 0); if (e.team) r.teams.add(e.team);
+  };
+  matches.forEach(e => add(e, 'match')); pits.forEach(e => add(e, 'pit')); pres.forEach(e => add(e, 'pre'));
+  const rows = [...who.values()].sort((a, b) => b.match + b.pit + b.pre - (a.match + a.pit + a.pre));
+  const ago = t => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
+  $('#scoutTable').innerHTML = `<thead><tr><th>Scout</th><th>Matches</th><th>Pit</th>${pres.length ? '<th>Pre-event</th>' : ''}<th>Teams</th><th>Last saved</th></tr></thead><tbody>${rows.length ? rows.map(r =>
+    `<tr><td>${esc(r.name)}${r.name.toLowerCase() === String(settings.scouter).trim().toLowerCase() ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.match}</td><td>${r.pit}</td>${pres.length ? `<td>${r.pre}</td>` : ''}<td>${r.teams.size}</td><td>${ago(r.last)}</td></tr>`).join('')
+    : `<tr><td colspan="6" class="muted">Nothing saved yet.</td></tr>`}</tbody>`;
+
+  const ev = eventKey(), sc = sched && sched.event === ev && sched.matches.length ? sched : null;
+  if (!sc) {
+    $('#coverNote').textContent = 'Load the Schedule tab to see which robots in each match have been scouted.';
+    $('#coverTable').innerHTML = '';
+    const teams = allTeams().sort((a, b) => a - b), withPit = new Set(pits.map(p => p.team));
+    $('#pitCover').innerHTML = teams.length ? `<p class="muted" style="margin-top:0">Teams seen so far without a pit entry:</p><div class="row">${teams.filter(t => !withPit.has(t)).map(t => `<span class="cover none">${esc(t)}</span>`).join('') || '<span class="good">None, every team has one.</span>'}</div>` : '<p class="muted">No teams yet.</p>';
+    return;
+  }
+  const done = new Map();   // "team|match" -> scouts
+  matches.forEach(m => { const k = `${m.team}|${m.match}`; done.set(k, [...(done.get(k) || []), m.scouter || '?']); });
+  let full = 0;
+  const body = sc.matches.map(m => {
+    const cells = [...m.red.map(t => [t, 'r']), ...m.blue.map(t => [t, 'b'])].map(([t, side]) => {
+      const by = done.get(`${t}|${m.n}`);
+      return `<td class="${side}1" ${by ? `data-tip="${esc(by.join(', '))}"` : ''}>${by ? '✓ ' : ''}${esc(t)}</td>`;
+    });
+    const n = [...m.red, ...m.blue].filter(t => done.has(`${t}|${m.n}`)).length; if (n === 6) full++;
+    return `<tr><td>Q${m.n}</td><td><span class="cover ${n === 6 ? 'full' : n ? '' : 'none'}">${n}/6</span></td>${cells.join('')}</tr>`;
+  }).join('');
+  $('#coverNote').textContent = `${full} of ${sc.matches.length} matches have all 6 robots scouted. ✓ = scouted; hover to see by whom.`;
+  $('#coverTable').innerHTML = `<thead><tr><th>Match</th><th>Robots</th><th colspan="3">Red</th><th colspan="3">Blue</th></tr></thead><tbody>${body}</tbody>`;
+  const teams = [...new Set(sc.matches.flatMap(m => [...m.red, ...m.blue]))].sort((a, b) => a - b);
+  const withPit = new Set(pits.map(p => p.team)), missing = teams.filter(t => !withPit.has(t));
+  $('#pitCover').innerHTML = `<p class="muted" style="margin-top:0">${teams.length - missing.length} of ${teams.length} teams at the event have a pit entry.${missing.length ? ' Still needed:' : ''}</p>
+    <div class="row">${missing.map(t => `<span class="cover none">${esc(t)}</span>`).join('') || '<span class="good">Every team is done.</span>'}</div>`;
+}
+
 /* ================= drive team view ================= */
 function renderDriveInputs() {
   const mk = i => `<input type="text" inputmode="numeric" data-lineup="${i}" value="${esc(settings.lineup[i])}" placeholder="Team" style="width:90px">`;
@@ -1034,13 +1232,14 @@ $('#view-guide').innerHTML = `
 <dt>Cycle</dt><dd>One trip: pick up balls, then score them. Count one each time they score after collecting.</dd>
 <dt>Accuracy</dt><dd>Out of the balls they shot, about how many went in. A guess is fine: about half = ~50%.</dd>
 <dt>Balls collected / scored</dt><dd>Yes or No: did the robot pick up any balls, and did it get any in? You don't need to count them.</dd>
-<dt>Hang / get down</dt><dd>In auto, did the robot hang on the structure, and did it get back down to keep playing?</dd>
+<dt>Auto path</dt><dd>Tap the map where the robot started (green), then each place it drove to, in order. Undo point takes back the last tap.</dd>
+<dt>Hang / get down</dt><dd>In auto, did the robot hang on the structure? Only if Yes: did it get back down to keep playing?</dd>
 <dt>Beached</dt><dd>The robot got stuck and couldn't drive: on the bump, in the trench, on a ball, or against another robot. Tap where it happened.</dd>
 <dt>Recovered</dt><dd>After getting beached, the robot got free <b>on its own</b> and kept playing. If a ref or another robot had to free it, or it stayed stuck, that's No.</dd>
 <dt>Defense</dt><dd>Blocking or pushing the other alliance instead of scoring. Counts in the Center, the Transition zones and the <b>opponent's</b> alliance zone. Not the depots, the ladders, or their own alliance zone. Tap the map where it happened.</dd>
 <dt>Depot / Ladder / Center</dt><dd>Field areas. Depot = where balls are stored near each alliance. Ladder = the climbing structure. Center = the middle of the field.</dd>
 <dt>Hub</dt><dd>The scoring target in each Transition zone: red hub on the red side, blue hub on the blue side. On the defense map you can't drop a dot on a hub.</dd>
-<dt>Rung</dt><dd>Which bar they climbed to. 1 is lowest.</dd>
+<dt>Rung</dt><dd>Which bar they climbed to. 1 is lowest. Only asked when Climb is "Climbed".</dd>
 <dt>Breakdown / comeback</dt><dd>Stopped working during the match (no movement, lost comms, broken arm). Comeback = started working again.</dd>
 <dt>Penalty</dt><dd>Watch for the ref's flag and the score display. Pick the type if you know it; otherwise write what you saw.</dd>
 </dl></div>
@@ -1054,10 +1253,40 @@ $('#view-guide').innerHTML = `
 </ol></div>`;
 
 /* ================= sync: QR, files ================= */
-qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
-function qrSVG(textData) {
-  const q = qrcode(0, 'L'); q.addData(textData, 'Byte'); q.make();
+// QR codes carry raw bytes: a match squeezed with deflate, then cut into
+// parts small enough for a phone camera to read off another phone's screen.
+// A whole match as one code was ~140 squares across, too dense to scan.
+const QR_PART = 320;   // bytes per code, ~60 squares across
+function qrSVG(bytes) {
+  const q = qrcode(0, 'L');
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];   // 1 char = 1 byte
+  q.addData(String.fromCharCode(...bytes), 'Byte'); q.make();
   return q.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+}
+async function squeeze(bytes, how) {
+  const s = new Blob([bytes]).stream().pipeThrough(how === 'in' ? new DecompressionStream('deflate-raw') : new CompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+// part = [2, index, count, group (4 bytes), ...data]; plain JSON where compression isn't available
+async function qrParts(e) {
+  const json = new TextEncoder().encode(JSON.stringify(compact(e)));
+  if (typeof CompressionStream === 'undefined') return [json];
+  const z = await squeeze(json, 'out'), n = Math.max(1, Math.ceil(z.length / QR_PART));
+  const g = [...crypto.getRandomValues(new Uint8Array(4))];
+  return Array.from({ length: n }, (_, i) => new Uint8Array([2, i, n, ...g, ...z.subarray(i * QR_PART, (i + 1) * QR_PART)]));
+}
+// the scanner's side: plain JSON imports straight away, parts wait for the rest
+const qrGroups = new Map();
+async function readQR(bytes) {
+  if (bytes[0] !== 2) return { done: importText(new TextDecoder().decode(bytes)) };
+  const [, i, n] = bytes, key = bytes.slice(3, 7).join('.');
+  const g = qrGroups.get(key) || qrGroups.set(key, new Array(n).fill(null)).get(key);
+  g[i] = bytes.slice(7);
+  const have = g.filter(Boolean).length;
+  if (have < n) return { part: have, of: n };
+  qrGroups.delete(key);
+  const all = new Uint8Array(g.reduce((s, x) => s + x.length, 0)); let o = 0; for (const x of g) { all.set(x, o); o += x.length; }
+  return { done: importText(new TextDecoder().decode(await squeeze(all, 'in'))) };
 }
 // shorter QR payload: leave out empty values
 function compact(o) {
@@ -1069,24 +1298,37 @@ function compact(o) {
   }
   return r;
 }
-function showQR(list, i) {
+// every entry becomes one or more codes; Next steps through all of them
+async function showQR(list, i = 0) {
+  list = list.filter(Boolean);
   if (!list.length) return toast('Nothing to show');
-  i = Math.max(0, Math.min(i, list.length - 1));
-  const e = list[i];
-  let svg;
-  // photos are far too big for a QR code; they travel by file / AirDrop instead
-  const { photo, ...qrData } = e;
-  try { svg = qrSVG(JSON.stringify(compact(qrData))); }
-  catch (err) { svg = '<p style="color:#000;padding:20px">Too much text for one QR code. Use file export for this entry.</p>'; }
-  const title = e.kind === 'pit' ? `Pit · Team ${esc(e.team)}` : `Team ${esc(e.team)} · Match ${esc(e.match)}`;
-  openDialog(`<h2 style="margin:0">${title}</h2><p class="muted" style="margin:4px 0">${i + 1} of ${list.length} · ${esc(e.scouter || '')}</p>
-    <div class="qrbox">${svg}</div>
-    <div class="row" style="justify-content:center"><button class="btn" id="qrPrev" ${i ? '' : 'disabled'}>◀ Prev</button><button class="btn primary" id="qrNext" ${i < list.length - 1 ? '' : 'disabled'}>Next ▶</button></div>`);
-  $('#qrPrev').onclick = () => showQR(list, i - 1);
-  $('#qrNext').onclick = () => showQR(list, i + 1);
+  const frames = [];
+  for (const e of list) {
+    // photos are far too big for a QR code; they travel by file / AirDrop instead
+    const { photo, ...qrData } = e;
+    const parts = await qrParts(qrData);
+    parts.forEach((bytes, p) => frames.push({ e, bytes, p, n: parts.length }));
+  }
+  const draw = i => {
+    i = Math.max(0, Math.min(i, frames.length - 1));
+    const { e, bytes, p, n } = frames[i];
+    let svg;
+    try { svg = qrSVG(bytes); }
+    catch (err) { svg = '<p style="color:#000;padding:20px">Too much for a QR code. Use file export or AirDrop for this entry.</p>'; }
+    const title = e.kind === 'pit' ? `Pit · Team ${esc(e.team)}` : e.kind === 'pre' ? `Pre-event · Team ${esc(e.team)}` : `Team ${esc(e.team)} · Match ${esc(e.match)}`;
+    const entryNo = list.indexOf(e) + 1;
+    openDialog(`<h2 style="margin:0">${title}${n > 1 ? ` <span class="muted" style="font-size:15px;font-weight:400">· code ${p + 1} of ${n}</span>` : ''}</h2>
+      <p class="muted" style="margin:4px 0">${list.length > 1 ? `Entry ${entryNo} of ${list.length} · ` : ''}${esc(e.scouter || '')}${n > 1 ? ' · scan every code for this entry' : ''}</p>
+      <div class="qrbox">${svg}</div>
+      <div class="row" style="justify-content:center"><button class="btn" id="qrPrev" ${i ? '' : 'disabled'}>◀ Prev</button><button class="btn primary" id="qrNext" ${i < frames.length - 1 ? '' : 'disabled'}>Next ▶</button></div>`);
+    $('#qrPrev').onclick = () => draw(i - 1);
+    $('#qrNext').onclick = () => draw(i + 1);
+  };
+  // i counts entries, so start at that entry's first code
+  draw(frames.findIndex(f => f.e === list[Math.max(0, Math.min(i, list.length - 1))]));
 }
 $('#btnQRAll').onclick = () => {
-  const mine = [...matches, ...pits].sort((a, b) => b.ts - a.ts);
+  const mine = [...matches, ...pits, ...pres].sort((a, b) => b.ts - a.ts);
   showQR(mine, 0);
 };
 
@@ -1094,22 +1336,22 @@ function mergeEntries(list) {
   let added = 0, updated = 0;
   for (const raw of list) {
     if (!raw || typeof raw !== 'object' || !raw.id || !raw.team) continue;
-    const isPit = raw.kind === 'pit';
-    const e = upgrade(clone(raw), isPit ? blankPit() : blankMatch());
-    if (!isPit) ballsYN(e);
+    const isPit = raw.kind === 'pit', kind = isPit ? 'pit' : raw.kind === 'pre' ? 'pre' : 'match';
+    const e = upgrade(clone(raw), isPit ? blankPit() : kind === 'pre' ? blankPre() : blankMatch());
+    if (kind === 'match') ballsYN(e);
     e.team = cleanTeam(e.team);
-    const arr = isPit ? pits : matches, i = arr.findIndex(x => x.id === e.id);
+    const arr = listOf(kind), i = arr.findIndex(x => x.id === e.id);
     // a QR code never carries the photo, so keep the one already here
     if (isPit && !e.photo && i >= 0 && arr[i].photo) e.photo = arr[i].photo;
     if (i < 0) { arr.push(e); added++; } else if ((e.ts || 0) > (arr[i].ts || 0) || (isPit && e.photo && !arr[i].photo)) { arr[i] = e; updated++; }
   }
-  LS.set(K.matches, matches); LS.set(K.pits, pits); updateCount(); refreshViews();
+  LS.set(K.matches, matches); LS.set(K.pits, pits); LS.set(K.pre, pres); updateCount(); refreshViews();
   return { added, updated };
 }
 function importText(txt) {
   let data;
   try { data = JSON.parse(txt); } catch (e) { toast('That isn\'t scouting data (bad JSON)'); return null; }
-  const list = Array.isArray(data) ? data : data.matches || data.pits ? [...(data.matches || []), ...(data.pits || [])] : [data];
+  const list = Array.isArray(data) ? data : data.matches || data.pits || data.pre ? [...(data.matches || []), ...(data.pits || []), ...(data.pre || [])] : [data];
   const r = mergeEntries(list);
   toast(`Imported: ${r.added} new, ${r.updated} updated`);
   return r;
@@ -1122,11 +1364,11 @@ function download(name, content, type) {
 }
 const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 const fileTag = () => [settings.event, settings.scouter].filter(Boolean).join('-').replace(/[^\w-]+/g, '_') || 'scouting';
-const exportJSON = () => JSON.stringify({ app: 'frc-scouting', v: 1, exported: Date.now(), matches, pits });
+const exportJSON = () => JSON.stringify({ app: 'frc-scouting', v: 1, exported: Date.now(), matches, pits, pre: pres });
 $('#btnExportJSON').onclick = () => download(`${fileTag()}-${stamp()}.json`, exportJSON(), 'application/json');
 // AirDrop lives in the share sheet on iPhone/iPad/Mac
 $('#btnAirDrop').onclick = async () => {
-  if (!matches.length && !pits.length) return toast('Nothing to send yet');
+  if (!matches.length && !pits.length && !pres.length) return toast('Nothing to send yet');
   const name = `${fileTag()}-${stamp()}.json`;
   const file = new File([exportJSON()], name, { type: 'application/json' });
   if (!navigator.canShare?.({ files: [file] })) { download(name, exportJSON(), 'application/json'); return toast('No share sheet here, so the file was saved instead'); }
@@ -1136,7 +1378,7 @@ $('#btnAirDrop').onclick = async () => {
 function flatten(o, p = '', out = {}) {
   for (const [k, v] of Object.entries(o)) {
     const key = p ? `${p}.${k}` : k;
-    if (k === 'defDots') out[key] = v.map(d => d.join(':')).join(' ');
+    if (k === 'defDots' || k === 'path') out[key] = v.map(d => d.join(':')).join(' ');
     else if (Array.isArray(v)) out[key] = v.join('; ');
     else if (v && typeof v === 'object') flatten(v, key, out);
     else out[key] = v;
@@ -1153,9 +1395,9 @@ $('#btnExportPitCSV').onclick = () => download(`${fileTag()}-pits-${stamp()}.csv
 $('#importFile').onchange = async e => { for (const f of e.target.files) importText(await f.text()); e.target.value = ''; };
 $('#btnPaste').onclick = () => { if (importText($('#pasteBox').value)) $('#pasteBox').value = ''; };
 $('#btnWipe').onclick = () => {
-  if (!confirm('Delete ALL match and pit data on this device? This cannot be undone.')) return;
+  if (!confirm('Delete ALL match, pit and pre-event data on this device? This cannot be undone.')) return;
   if (prompt('Type DELETE to confirm') !== 'DELETE') return;
-  matches = []; pits = []; LS.set(K.matches, matches); LS.set(K.pits, pits); updateCount(); refreshViews(); toast('All data deleted');
+  matches = []; pits = []; pres = []; LS.set(K.matches, matches); LS.set(K.pits, pits); LS.set(K.pre, pres); updateCount(); refreshViews(); toast('All data deleted');
 };
 
 // QR scanner
@@ -1163,7 +1405,7 @@ let scanStream = null;
 $('#btnScan').onclick = async () => {
   if (!navigator.mediaDevices?.getUserMedia) return toast('No camera access here. Use file import instead.');
   openDialog(`<h2 style="margin-top:0">Scan QR codes</h2><video id="scanVideo" playsinline muted></video><p id="scanStatus" class="muted">Point the camera at a scout's QR code. Keep scanning; each new code is imported automatically.</p>`, stopScan);
-  try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); }
+  try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } }); }
   catch (err) { $('#scanStatus').textContent = 'Camera blocked: ' + err.message + '. Allow camera access, or use file import.'; return; }
   const video = $('#scanVideo'); video.srcObject = scanStream; await video.play();
   const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -1171,17 +1413,19 @@ $('#btnScan').onclick = async () => {
   const tick = () => {
     if (!scanStream) return;
     if (video.readyState >= 2 && video.videoWidth) {
-      const scale = Math.min(1, 800 / video.videoWidth);
+      const scale = Math.min(1, 1280 / video.videoWidth);
       canvas.width = video.videoWidth * scale; canvas.height = video.videoHeight * scale;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
       if (r) {
-        const txt = r.binaryData ? new TextDecoder().decode(new Uint8Array(r.binaryData)) : r.data;
-        if (!seen.has(txt)) {
-          seen.add(txt);
-          const res = importText(txt);
-          if (res) { n++; $('#scanStatus').innerHTML = `✅ Scanned ${n} code${n > 1 ? 's' : ''} so far. Show the next one.`; navigator.vibrate?.(80); }
+        const bytes = new Uint8Array(r.binaryData || new TextEncoder().encode(r.data)), key = bytes.join(',');
+        if (!seen.has(key)) {
+          seen.add(key);
+          readQR(bytes).then(res => {
+            if (res.part) { $('#scanStatus').innerHTML = `📷 Got code ${res.part} of ${res.of} for this entry. Show the next one.`; navigator.vibrate?.(40); }
+            else if (res.done) { n++; $('#scanStatus').innerHTML = `✅ Imported ${n} entr${n > 1 ? 'ies' : 'y'} so far. Show the next one.`; navigator.vibrate?.(80); }
+          }).catch(() => { $('#scanStatus').textContent = "Couldn't read that code. Try it again."; seen.delete(key); });
         }
       }
     }
@@ -1206,8 +1450,8 @@ $('#dlgClose').onclick = closeDialog;
 
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); }
-function updateCount() { $('#count').textContent = `${matches.length} matches · ${pits.length} pit`; }
-function refreshViews() { renderForm($('#matchForm')); renderForm($('#pitForm')); renderData(); renderDrive(); renderRank(); }
+function updateCount() { $('#count').textContent = `${matches.length} matches · ${pits.length} pit${pres.length ? ` · ${pres.length} pre` : ''}`; }
+function refreshViews() { renderForm($('#matchForm')); renderForm($('#pitForm')); renderForm($('#preForm')); renderData(); renderDrive(); renderRank(); if (ui.view === 'scouts') renderScouts(); }
 function show(view) {
   ui.view = view; saveUI();
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
@@ -1216,11 +1460,15 @@ function show(view) {
   if (view === 'drive') renderDrive();
   if (view === 'rank') renderRank();
   if (view === 'sched') renderSchedule();
+  if (view === 'scouts') renderScouts();
 }
 $('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
 $$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
 
+$('#navPre').hidden = !settings.preEvent;
+if (ui.view === 'pre' && !settings.preEvent) ui.view = 'match';
 if (!cur.scouter) cur.scouter = settings.scouter;
+if (!curPre.scouter) curPre.scouter = settings.scouter;
 if (!cur.event) cur.event = settings.event;
 renderDriveInputs();
 refreshViews(); updateCount(); show(ui.view);
