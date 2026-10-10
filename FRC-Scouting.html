@@ -308,6 +308,7 @@ const ACC = [['0', '~0%'], ['25', '~25%'], ['50', '~50%'], ['75', '~75%'], ['100
 const ZONES = ['Depot', 'Center', 'Ladder', 'Alliance Zone', 'Transition'];
 const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinning', 'Contact in protected zone', 'Too many game pieces', 'Over extension', 'Other'];
 const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
+const ROBOT_TYPES = ['Under trench', 'Over bump', 'Both'];
 const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
 
 /* ================= field map =================
@@ -350,13 +351,14 @@ const seg = (k, label, opts, cls = '', hint = '') => `<div class="field"><label>
 const chips = (k, label, opts) => `<div class="field wide"><label>${label}</label><div class="chips" data-k="${k}">${opts.map(o => `<button type="button" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`;
 const text = (k, label, ph = '', rows = 2) => `<div class="field wide"><label>${label}</label><textarea data-k="${k}" rows="${rows}" placeholder="${esc(ph)}"></textarea></div>`;
 const input = (k, label, ph = '', numeric = false) => `<div class="field"><label>${label}</label><input type="text" data-k="${k}" placeholder="${esc(ph)}" ${numeric ? 'inputmode="numeric" pattern="[0-9]*"' : ''} autocomplete="off"></div>`;
+const select = (k, label, opts) => `<div class="field"><label>${label}</label><select data-k="${k}"><option value="">Pick one…</option>${opts.map(o => `<option>${esc(o)}</option>`).join('')}</select></div>`;
 const showIf = (k, html) => `<div class="grid" data-show="${k}" style="grid-column:1/-1">${html}</div>`;
 
 $('#matchForm').innerHTML = `
 <div class="card"><h2>Match info</h2><div class="grid">
   ${input('team', 'Team #', 'e.g. 254', true)}${input('match', 'Match #', 'e.g. 12', true)}
   ${seg('alliance', 'Alliance', [['R', 'Red'], ['B', 'Blue']], 'alliance')}${seg('station', 'Driver station', [['1', '1'], ['2', '2'], ['3', '3']])}
-  ${input('robotType', 'Robot type', 'e.g. shooter, defense bot, swerve')}
+  ${select('robotType', 'Robot type', ROBOT_TYPES)}
   ${input('scouter', 'Scouter')}${input('event', 'Event')}
 </div><p class="hint" id="editBanner" hidden>✏ Editing a saved entry. Saving will overwrite it.</p></div>
 
@@ -458,11 +460,14 @@ document.addEventListener('click', e => {
   }
   persistDraft(name); renderForm(form);
 });
-document.addEventListener('input', e => {
+// 'change' too: some phones only report a dropdown pick that way
+const onFieldInput = e => {
   const el = e.target, form = el.closest('[data-model]');
   if (form && el.dataset.k) { setP(model(form.dataset.model), el.dataset.k, el.value.trim() === '' ? '' : el.value); persistDraft(form.dataset.model); }
   if (el.dataset.setting) { settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings(); }
-});
+};
+document.addEventListener('input', onFieldInput);
+document.addEventListener('change', e => { if (e.target.tagName === 'SELECT') onFieldInput(e); });
 
 // defense map
 function drawDots() {
