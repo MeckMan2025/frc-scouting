@@ -116,6 +116,10 @@ dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:
 .legend i{display:inline-block;width:14px;height:10px;border-radius:0 3px 3px 0;background:var(--muted)}
 .legend b{display:inline-block;width:2px;height:14px;background:var(--text);opacity:.75}
 #tip{position:fixed;z-index:50;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 6px 20px #0008;max-width:240px}
+.row .robotpic{max-width:calc(50% - 4px)}
+.robotpic{display:block;max-width:100%;max-height:320px;border-radius:12px;margin:8px 0;border:1px solid var(--line)}
+.sched td.t{cursor:pointer;font-weight:600} .sched td.t.us{outline:2px solid var(--accent);outline-offset:-2px}
+.sched td.t.done::after{content:' ✓';color:var(--ok)} .sched td.r1{color:#ff9a9d} .sched td.b1{color:#8db8ff}
 details.form{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--panel2)}
 details.form summary{cursor:pointer;min-height:28px}
 details.form[open] summary{margin-bottom:6px}
@@ -126,6 +130,7 @@ details.form[open] summary{margin-bottom:6px}
 <header>
   <div class="topbar"><h1>⚙ FRC Scouting</h1><span class="count" id="count"></span></div>
   <nav id="nav">
+    <button data-view="sched">Schedule</button>
     <button data-view="match">Match</button>
     <button data-view="pit">Pit</button>
     <button data-view="data">Data</button>
@@ -138,6 +143,15 @@ details.form[open] summary{margin-bottom:6px}
 
 <main>
   <section class="view" id="view-match"><form data-model="match" id="matchForm" onsubmit="return false"></form></section>
+  <section class="view" id="view-sched">
+    <div class="card">
+      <h2>Event schedule</h2>
+      <div class="row"><span id="schedEvent" class="muted"></span><button class="btn small" id="btnSched">Load schedule</button></div>
+      <p class="hint" id="schedNote"></p>
+    </div>
+    <div class="tablewrap"><table class="sched" id="schedTable"></table></div>
+    <p class="hint">Tap a team to start scouting it in that match. ✓ = already scouted on this device. Your team is outlined.</p>
+  </section>
   <section class="view" id="view-pit"><form data-model="pit" id="pitForm" onsubmit="return false"></form></section>
 
   <section class="view" id="view-data">
@@ -208,6 +222,8 @@ details.form[open] summary{margin-bottom:6px}
         <div class="field"><label>Your name (scouter)</label><input type="text" data-setting="scouter"></div>
         <div class="field"><label>Event name/code</label><input type="text" data-setting="event" placeholder="e.g. 2026miket"></div>
         <div class="field"><label>Our team #</label><input type="text" inputmode="numeric" data-setting="ourTeam"></div>
+        <div class="field"><label>The Blue Alliance read key <small>for the Schedule tab</small></label><input type="text" data-setting="tbaKey" autocomplete="off" placeholder="Paste key">
+          <p class="hint">Free: sign in at thebluealliance.com/account and add a Read API key.</p></div>
         <div class="field"><label>After saving a match</label>
           <label class="row" style="color:var(--text)"><input type="checkbox" data-setting="qrAfterSave" style="width:22px;height:22px"> Show its QR code right away</label></div>
       </div>
@@ -243,7 +259,7 @@ const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
 const setP = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k] ??= {}, o)[last] = v; };
 const parseVal = s => s === 'true' ? true : s === 'false' ? false : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
 
-let settings = Object.assign({ scouter: '', event: '', ourTeam: '', qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
+let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
 let matches = LS.get(K.matches, []);
 let pits = LS.get(K.pits, []);
 const ui = Object.assign({ view: 'match', dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
@@ -257,7 +273,7 @@ function blankMatch() {
     kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
     match: '', team: '', alliance: '', station: '', robotType: '',
     auto: { preload: null, collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
-    tele: { collected: null, acc: null, scored: null, beached: null, recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
+    tele: { collected: null, acc: null, scored: null, beached: null, beachWhere: [], recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
     end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
     extra: { penalties: 0, penKinds: [], penNotes: '', breakdown: null, comeback: null, brkNotes: '', problems: [], probNotes: '', driver: null, strategy: '', overall: '' }
   };
@@ -265,7 +281,7 @@ function blankMatch() {
 function blankPit() {
   return {
     kind: 'pit', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event, team: '',
-    drive: null, intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
+    robotName: '', drivers: '', photo: '', drive: null, intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
     beachRisk: null, strengths: '', problems: [], probNotes: '', strategy: '', notes: ''
   };
 }
@@ -295,8 +311,10 @@ const persistDraft = n => n === 'match' ? LS.set(K.draft, cur) : LS.set(K.pitDra
 
 const YN = [['true', 'Yes'], ['false', 'No']];
 const ACC = [['0', '~0%'], ['25', '~25%'], ['50', '~50%'], ['75', '~75%'], ['100', '~100%']];
-const ZONES = ['Depot', 'Center', 'Ladder', 'Alliance Zone', 'Transition'];
-const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinning', 'Contact in protected zone', 'Too many game pieces', 'Over extension', 'Other'];
+// Where defense counts: not the depots, not the ladders, and not the robot's own alliance zone.
+const ZONES = ['Center', 'Transition', 'Opponent Alliance Zone'];
+const BEACH = ['Bump', 'Trench', 'Ball', 'Other robot'];
+const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinning', 'Contact in protected zone', 'Over extension', 'Other'];
 const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
 const ROBOT_TYPES = ['Under trench', 'Over bump', 'Both'];
 const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
@@ -377,7 +395,7 @@ $('#matchForm').innerHTML = `
   ${seg('tele.scored', 'Balls scored?', YN)}
   ${seg('tele.acc', 'Scoring accuracy', ACC)}
   ${seg('tele.beached', 'Got beached / stuck?', YN)}
-  ${showIf('tele.beached', seg('tele.recovered', 'Recovered?', YN))}
+  ${showIf('tele.beached', chips('tele.beachWhere', 'Where did they beach?', BEACH) + seg('tele.recovered', 'Recovered?', YN, '', 'got free on its own and kept playing'))}
   ${seg('tele.defense', 'Played defense?', YN)}
   ${showIf('tele.defense', `${chips('tele.defZones', 'Where? Tap zones or tap the map', ZONES)}
     <div class="field wide">${fieldSVG('defMap')}
@@ -403,13 +421,20 @@ $('#matchForm').innerHTML = `
   ${chips('extra.problems', 'Common problems', PROBLEMS)}
   ${text('extra.probNotes', 'Problems (in your own words)', 'Anything that went wrong for this robot')}
   ${text('extra.strategy', 'Strategy: what are they doing?', 'e.g. Cycles from the depot and shoots from the ladder. Switches to defense in the last 30 seconds.')}
-  ${text('extra.overall', 'Overall match summary: would they work well with us?', 'Two or three sentences a drive coach can read in 10 seconds. Good partner for us? Why or why not?', 3)}
+  ${text('extra.overall', 'Overall match summary: would they work well with us?', 'Two or three sentences a drive coach can read in 10 seconds. Good partner for us? Why or why not?', 4)}
+  <div class="field wide" style="margin-top:-6px"><button type="button" class="btn small" id="btnAutoSum">✨ Fill from my answers</button>
+    <span class="hint" style="margin-left:6px">Writes a summary from everything above. Edit it, then add whether they'd work well with us.</span></div>
 </div></div>
 <div class="savebar"><button type="button" class="btn primary" id="btnSaveMatch">Save match</button><button type="button" class="btn" id="btnResetMatch">Reset</button></div>`;
 
 $('#pitForm').innerHTML = `
 <div class="card"><h2>Pit scouting</h2><div class="grid">
   ${input('team', 'Team #', 'e.g. 254', true)}${input('scouter', 'Scouter')}
+  ${input('robotName', 'Robot name', 'What they call the robot')}${input('drivers', 'Driver name(s)', 'Driver and operator')}
+  <div class="field wide"><label>Robot photo</label>
+    <div class="row"><label class="btn small" style="display:inline-flex;align-items:center">📷 Take or choose photo<input type="file" id="pitPhoto" accept="image/*" capture="environment" hidden></label>
+    <button type="button" class="btn small" id="pitPhotoDel">Remove photo</button></div>
+    <img id="pitPhotoImg" class="robotpic" alt="Robot photo"></div>
   ${seg('drive', 'Drivetrain', [['Swerve', 'Swerve'], ['Tank', 'Tank'], ['Mecanum', 'Mecanum'], ['Other', 'Other']])}
   ${seg('intake', 'Collects balls from', [['Ground', 'Ground'], ['Depot', 'Depot'], ['Both', 'Both'], ['None', 'None']])}
   ${counter('capacity', 'Balls it can hold', [1, 5])}
@@ -421,7 +446,7 @@ $('#pitForm').innerHTML = `
   ${text('strengths', 'Strengths', 'What are they proud of?')}
   ${chips('problems', 'Known problems', PROBLEMS)}
   ${text('probNotes', 'Problems in their words', 'What do they struggle with or keep fixing?')}
-  ${text('strategy', 'Strategy notes', 'What role would they play on an alliance?')}
+  ${text('strategy', 'Their strategy', 'What do they plan to do in a match? e.g. score from the hub, play defense, climb early')}
   ${text('notes', 'Other notes')}
 </div></div>
 <div class="savebar"><button type="button" class="btn primary" id="btnSavePit">Save pit entry</button><button type="button" class="btn" id="btnResetPit">Reset</button></div>
@@ -441,7 +466,11 @@ function renderForm(form) {
   if (form.dataset.model === 'match') {
     drawDots();
     $('#editBanner').hidden = !(cur.id && matches.some(x => x.id === cur.id));
-  } else renderPitList();
+  } else {
+    renderPitList();
+    const img = $('#pitPhotoImg'); img.hidden = !curPit.photo; if (curPit.photo) img.src = curPit.photo;
+    $('#pitPhotoDel').hidden = !curPit.photo;
+  }
 }
 document.addEventListener('click', e => {
   const btn = e.target.closest('button'); if (!btn) return;
@@ -470,7 +499,9 @@ const onFieldInput = e => {
     const k = el.dataset.k;
     settings[k] = el.value.trim(); saveSettings();
     $$(`[data-setting="${k}"]`).forEach(x => x.value = settings[k]);
-    if (form.dataset.model === 'match' && k === 'scouter' && !curPit.scouter) { curPit.scouter = settings.scouter; persistDraft('pit'); renderForm($('#pitForm')); }
+    // and onto the other form, so Match and Pit always carry the same name
+    const other = form.dataset.model === 'match' ? 'pit' : 'match';
+    if (k in model(other)) { model(other)[k] = settings[k]; persistDraft(other); renderForm($('#' + other + 'Form')); }
   }
   if (el.dataset.setting) { settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings(); }
 };
@@ -488,8 +519,14 @@ $('#defMap').addEventListener('click', e => {
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
   const x = Math.round(p.x), y = Math.round(p.y);
   if (hubAt(x, y)) return toast("That's the hub. Tap the field around it.");
+  let z = zoneAt(x, y);
+  if (z === 'Depot' || z === 'Ladder') return toast(`The ${z.toLowerCase()} isn't a defense zone.`);
+  if (z === 'Alliance Zone') {
+    if (!cur.alliance) return toast('Pick their alliance first, so we know which zone is theirs.');
+    if ((x < FIELD.w / 2 ? 'R' : 'B') === cur.alliance) return toast("That's their own alliance zone, not a defense zone.");
+    z = 'Opponent Alliance Zone';
+  }
   cur.tele.defDots.push([x, y]);
-  const z = zoneAt(x, y);
   if (z && !cur.tele.defZones.includes(z)) cur.tele.defZones.push(z);
   cur.tele.defense = true;
   persistDraft('match'); renderForm($('#matchForm'));
@@ -526,23 +563,31 @@ $('#btnResetMatch').onclick = () => {
 $('#btnSavePit').onclick = () => {
   curPit.team = cleanTeam(curPit.team);
   if (!curPit.team) return toast('Enter a team number');
-  // one pit entry per team: reuse its id so a re-scout updates it
-  const existing = pits.find(p => p.team === curPit.team);
-  curPit.id = curPit.id || (existing && existing.id) || uid();
+  // One pit entry per team PER SCOUT: re-scouting your own entry updates it,
+  // but another scout's entry for the same team is kept alongside, never replaced.
+  const me = String(curPit.scouter || '').trim().toLowerCase();
+  const mine = me && pits.find(p => p.team === curPit.team && String(p.scouter || '').trim().toLowerCase() === me);
+  // Re-scouting from a fresh form adds to your entry rather than wiping it:
+  // anything answered now wins, anything left blank keeps what you said before.
+  if (!curPit.id && mine) {
+    const blank = v => v == null || v === '' || v === 0 || (Array.isArray(v) && !v.length);
+    for (const [k, v] of Object.entries(mine)) if (blank(curPit[k]) && !blank(v)) curPit[k] = clone(v);
+  }
+  curPit.id = curPit.id || (mine && mine.id) || uid();
   curPit.ts = Date.now();
   const saved = clone(curPit);
-  pits = pits.filter(p => p.team !== saved.team || p.id === saved.id);
   upsert(pits, saved);
   if (!LS.set(K.pits, pits)) return;
   if (!settings.scouter && saved.scouter) { settings.scouter = saved.scouter; saveSettings(); }
   curPit = blankPit(); persistDraft('pit'); renderForm($('#pitForm')); updateCount();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Saved pit entry for ${saved.team}`);
+  if (settings.qrAfterSave) showQR([saved], 0);
 };
 $('#btnResetPit').onclick = () => { if (!confirm('Clear this form?')) return; curPit = blankPit(); persistDraft('pit'); renderForm($('#pitForm')); };
 function renderPitList() {
   const el = $('#pitList'); if (!el) return;
-  el.innerHTML = pits.length ? pits.slice().sort((a, b) => a.team - b.team).map(p => `<button type="button" class="btn small" data-pit="${esc(p.id)}">${esc(p.team)}</button>`).join('') : '<span class="muted">None yet</span>';
+  el.innerHTML = pits.length ? pits.slice().sort((a, b) => a.team - b.team).map(p => `<button type="button" class="btn small" data-pit="${esc(p.id)}">${esc(p.team)}${p.scouter ? ` <span class="muted">· ${esc(p.scouter)}</span>` : ''}</button>`).join('') : '<span class="muted">None yet</span>';
 }
 $('#pitList').addEventListener('click', e => {
   const b = e.target.closest('[data-pit]'); if (!b) return;
@@ -550,6 +595,65 @@ $('#pitList').addEventListener('click', e => {
   persistDraft('pit'); renderForm($('#pitForm')); window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Editing pit entry for ${curPit.team}`);
 });
+
+// Robot photo: shrunk before it's stored, since everything lives in this
+// browser's limited storage. ~640px wide is plenty to recognise a robot.
+$('#pitPhoto').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const img = new Image(); img.src = URL.createObjectURL(f); await img.decode();
+    const k = Math.min(1, 640 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(img.src);
+    curPit.photo = c.toDataURL('image/jpeg', 0.7);
+    persistDraft('pit'); renderForm($('#pitForm'));
+  } catch (err) { toast("Couldn't read that photo"); }
+};
+$('#pitPhotoDel').onclick = () => { curPit.photo = ''; persistDraft('pit'); renderForm($('#pitForm')); };
+
+// A first draft of the overall summary, written from the answers on the form.
+// The scout edits it and adds whether they'd work well with us.
+function autoSummary(m) {
+  const list = a => a.filter(Boolean).join(', ');
+  const side = m.alliance ? `${m.alliance === 'R' ? 'Red' : 'Blue'}${m.station ? ' ' + m.station : ''}` : '';
+  const about = [side, m.robotType && m.robotType.toLowerCase()].filter(Boolean).join(', ');
+  const out = [`Team ${m.team || '?'}${m.match ? ` in match ${m.match}` : ''}${about ? ` (${about})` : ''}.`];
+  const scored = (v, acc) => v === true ? `scored${acc != null ? ` (~${acc}%)` : ''}` : v === false ? "didn't score" : '';
+  const a = m.auto;
+  const auto = list([a.preload === true && 'preloaded', a.collected === true ? 'collected balls' : a.collected === false && "didn't collect",
+    scored(a.scored, a.acc), +a.cycles > 0 && `${a.cycles} cycle${a.cycles > 1 ? 's' : ''}`,
+    a.hang === true ? `hung${a.down === true ? ' and got back down' : a.down === false ? " but didn't get down" : ''}` : '']);
+  if (auto) out.push(`Auto: ${auto}.`);
+  const t = m.tele;
+  const tele = list([t.collected === true ? 'collected balls' : t.collected === false && "didn't collect", scored(t.scored, t.acc),
+    t.beached === true && `got beached${(t.beachWhere || []).length ? ' on ' + t.beachWhere.join('/').toLowerCase() : ''}${t.recovered === true ? ' and recovered' : t.recovered === false ? " and didn't recover" : ''}`,
+    t.defense === true && `played defense${t.defZones.length ? ' in ' + t.defZones.join(' and ').toLowerCase() : ''}`]);
+  if (tele) out.push(`Teleop: ${tele}.`);
+  const e = m.end;
+  const end = list([e.climb === 'ok' ? `climbed${e.rung ? ' to rung ' + e.rung : ''}` : e.climb === 'fail' ? 'tried to climb and failed' : e.climb === 'none' && 'no climb',
+    +e.cycles > 0 && `${e.cycles} cycle${e.cycles > 1 ? 's' : ''}`]);
+  if (end) out.push(`Endgame: ${end}.`);
+  const x = m.extra;
+  const extra = list([+x.penalties > 0 && `${x.penalties} penalt${x.penalties > 1 ? 'ies' : 'y'}${x.penKinds.length ? ' (' + x.penKinds.join(', ').toLowerCase() + ')' : ''}`,
+    x.breakdown === true ? `broke down${x.comeback === true ? ' but came back' : ''}` : x.breakdown === false && 'no breakdowns',
+    x.problems.length && 'problems: ' + x.problems.join(', ').toLowerCase(), x.driver != null && `driver ${x.driver}/5`]);
+  if (extra) out.push(extra.charAt(0).toUpperCase() + extra.slice(1) + '.');
+  if (x.strategy && x.strategy.trim()) out.push(`Their strategy: ${x.strategy.trim()}`);
+  out.push('Work well with us? ');
+  return out.join(' ');
+}
+function fillSummary(force) {
+  if (cur.extra.overall && cur.extra.overall.trim() && !force) return;
+  cur.extra.overall = autoSummary(cur);
+  const el = $('[data-k="extra.overall"]'); el.value = cur.extra.overall;
+  persistDraft('match');
+}
+$('#btnAutoSum').onclick = () => {
+  if (cur.extra.overall && cur.extra.overall.trim() && !confirm('Replace what you wrote with a fresh summary?')) return;
+  fillSummary(true); const el = $('[data-k="extra.overall"]'); el.focus(); el.setSelectionRange(el.value.length, el.value.length);
+};
+// tapping into an empty summary starts it off with the draft
+$('[data-k="extra.overall"]').addEventListener('focus', () => fillSummary(false));
 
 /* ================= analysis ================= */
 const avg = arr => { const a = arr.filter(v => v !== null && v !== '' && v !== undefined).map(Number); return a.length ? a.reduce((s, v) => s + v, 0) / a.length : null; };
@@ -563,7 +667,7 @@ function teamStats(team) {
   const count = f => ms.filter(f).length;
   const climbs = ms.filter(m => m.end.climb === 'ok');
   return {
-    team, n: ms.length, ms, pit: pits.find(p => p.team === team),
+    team, n: ms.length, ms, pits: pits.filter(p => p.team === team).sort((a, b) => b.ts - a.ts),
     // matches where they did it
     autoPre: count(m => m.auto.preload === true), autoCol: count(m => m.auto.collected === true), autoScr: count(m => m.auto.scored === true),
     teleCol: count(m => m.tele.collected === true), teleScr: count(m => m.tele.scored === true),
@@ -575,6 +679,7 @@ function teamStats(team) {
     bestRung: climbs.reduce((b, m) => Math.max(b, +m.end.rung || 0), 0),
     usualRung: topTags(tally(climbs.map(m => m.end.rung).filter(Boolean)), 1)[0]?.[0],
     def: count(m => m.tele.defense === true), defZones: tally(ms.flatMap(m => m.tele.defZones)),
+    beachWhere: tally(ms.filter(m => m.tele.beached === true).flatMap(m => m.tele.beachWhere || [])),
     beached: count(m => m.tele.beached === true), recovered: count(m => m.tele.beached === true && m.tele.recovered === true),
     broke: count(m => m.extra.breakdown === true), comeback: count(m => m.extra.breakdown === true && m.extra.comeback === true),
     pen: ms.reduce((s, m) => s + (+m.extra.penalties || 0), 0), penKinds: tally(ms.flatMap(m => m.extra.penKinds)),
@@ -594,7 +699,7 @@ function blurb(s) {
     else out.push('Has not tried a climb.');
     if (s.autoHang) out.push(`Hangs in auto (${s.autoHang}/${s.n}).`);
     if (s.def) out.push(`Played defense in ${s.def}/${s.n}${Object.keys(s.defZones).length ? `, mostly ${topTags(s.defZones, 2).map(x => x[0]).join(' and ')}` : ''}.`);
-    if (s.beached) out.push(`<span class="flag">Got beached ${s.beached}×</span>${s.recovered ? ` (got free ${s.recovered}×)` : ', never got free'}.`);
+    if (s.beached) out.push(`<span class="flag">Got beached ${s.beached}×</span>${Object.keys(s.beachWhere).length ? ` (mostly ${topTags(s.beachWhere, 2).map(x => x[0].toLowerCase()).join(' and ')})` : ''}${s.recovered ? ` (got free ${s.recovered}×)` : ', never got free'}.`);
     if (s.broke) out.push(`<span class="flag">Broke down ${s.broke}×</span>${s.comeback ? ` (came back ${s.comeback}×)` : ''}.`);
     if (!s.broke && !s.beached && s.n >= 2) out.push('<span class="good">Reliable so far.</span>');
     if (s.pen) out.push(`${s.pen} penalties${Object.keys(s.penKinds).length ? `: ${topTags(s.penKinds).map(([k, v]) => `${k} ×${v}`).join(', ')}` : ''}.`);
@@ -634,7 +739,7 @@ const TABLES = {
   },
   pits: {
     rows: () => pits,
-    cols: [['Team', p => +p.team], ['Drive', p => p.drive], ['Intake', p => p.intake], ['Holds', p => p.capacity], ['Rung', p => p.climbMax], ['Gets down', p => p.canGetDown, yn], ['Beach risk', p => p.beachRisk, yn], ['Scouter', p => p.scouter]],
+    cols: [['Team', p => +p.team], ['Robot', p => p.robotName || null], ['Driver', p => p.drivers || null], ['Photo', p => p.photo ? 1 : 0, v => v ? '📷' : '—'], ['Drive', p => p.drive], ['Intake', p => p.intake], ['Holds', p => p.capacity], ['Rung', p => p.climbMax], ['Gets down', p => p.canGetDown, yn], ['Beach risk', p => p.beachRisk, yn], ['Scouter', p => p.scouter]],
     open: p => openTeam(p.team)
   }
 };
@@ -666,11 +771,32 @@ function noteLines(m) {
   return [['Auto', m.auto.notes], ['Teleop', m.tele.notes], ['Endgame', m.end.notes], ['Penalty', m.extra.penNotes], ['Breakdown', m.extra.brkNotes], ['Problems', m.extra.probNotes], ['Strategy', m.extra.strategy], ['Summary', m.extra.overall]]
     .filter(x => x[1] && x[1].trim()).map(([k, v]) => `<div class="quote"><b>${k}:</b> ${esc(v)}</div>`).join('');
 }
-function pitBlock(p) {
-  if (!p) return '<p class="muted">No pit scouting yet.</p>';
-  const facts = [p.drive && `${p.drive} drive`, p.intake && `intake: ${p.intake}`, p.capacity && `holds ${p.capacity}`, p.climbMax != null && `climbs to rung ${p.climbMax || 'none'}`, p.canGetDown != null && (p.canGetDown ? 'can get down' : "can't get down")].filter(Boolean).join(' · ');
-  return `<p>${esc(facts)}</p>${[['Scoring', p.scoring], ['Autos', p.autos], ['Strengths', p.strengths], ['Problems', [p.problems.join(', '), p.probNotes].filter(Boolean).join(': ')], ['Strategy', p.strategy], ['Notes', p.notes]]
-    .filter(x => x[1]).map(([k, v]) => `<div class="quote"><b>${k}:</b> ${esc(v)}</div>`).join('')}`;
+// Every scout's pit entry for a team, combined: answers that agree show once,
+// answers that differ show side by side, and written notes keep who wrote them.
+function pitBlock(list) {
+  if (!list.length) return '<p class="muted">No pit scouting yet.</p>';
+  const many = list.length > 1;
+  // choices: each answer once, with how many scouts gave it when they differ
+  const fact = (label, f, fmt = v => esc(v)) => {
+    const t = tally(list.map(f).filter(v => v != null && v !== '').map(String)), k = Object.keys(t);
+    return k.length ? label + Object.entries(t).sort((a, b) => b[1] - a[1]).map(([v, n]) => fmt(v) + (k.length > 1 ? ` ×${n}` : '')).join(' / ') : '';
+  };
+  // numbers: the average, plus each scout's value when there's more than one
+  const num = (label, f, unit = '', skipZero = false) => {
+    const v = list.map(f).filter(x => x != null && x !== '' && !(skipZero && +x === 0)).map(Number);
+    if (!v.length) return '';
+    return v.length === 1 ? `${label}${v[0]}${unit}` : `${label}avg ${fmt(avg(v), 1)}${unit} (${v.join(', ')})`;
+  };
+  const facts = [fact('', p => p.robotName, v => `“${esc(v)}”`), fact('driver: ', p => p.drivers), fact('', p => p.drive, v => `${esc(v)} drive`),
+    fact('intake: ', p => p.intake), num('holds ', p => p.capacity, ' balls', true), num('highest rung ', p => p.climbMax),
+    fact('', p => p.canGetDown, v => v === 'true' ? 'can get down' : "can't get down"), fact('', p => p.beachRisk, v => v === 'true' ? 'gets beached often' : 'rarely beached')].filter(Boolean);
+  const photos = list.filter(p => p.photo).map(p => `<img class="robotpic" src="${p.photo}" alt="Team ${esc(p.team)} robot, photo by ${esc(p.scouter || 'a scout')}">`).join('');
+  const who = p => many && p.scouter ? ` <span class="muted">— ${esc(p.scouter)}</span>` : '';
+  const notes = [['Scoring', p => p.scoring], ['Autos', p => p.autos], ['Strengths', p => p.strengths], ['Problems', p => [p.problems.join(', '), p.probNotes].filter(Boolean).join(': ')], ['Strategy', p => p.strategy], ['Notes', p => p.notes]]
+    .flatMap(([k, f]) => list.filter(p => f(p)).map(p => `<div class="quote"><b>${k}:</b> ${esc(f(p))}${who(p)}</div>`)).join('');
+  const entries = list.map(p => `<div class="row" style="margin:6px 0"><span class="muted">${esc(p.scouter || 'Unknown scout')} · ${p.ts ? new Date(p.ts).toLocaleString() : ''}</span>${formButtons('pit', p.id)}</div>`).join('');
+  return `${photos ? `<div class="row">${photos}</div>` : ''}${facts.length ? `<p>${facts.join(' · ')}</p>` : ''}${notes}
+    <div style="margin-top:8px"><b style="font-size:14px">${many ? `${list.length} pit entries` : 'Pit entry'}</b>${entries}</div>`;
 }
 function openTeam(team) {
   const s = teamStats(team);
@@ -678,23 +804,36 @@ function openTeam(team) {
   openDialog(`<h2 style="margin-top:0">Team ${esc(team)}</h2>
     <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
     ${profileBlock(s)}
-    <h3>Pit scouting</h3>${pitBlock(s.pit)}
-    ${s.pit ? `<div class="row">${formButtons('pit', s.pit.id)}</div>` : ''}
+    ${writtenBlock(s.ms)}
+    <h3>Pit scouting${s.pits.length > 1 ? ` <span class="muted" style="font-weight:400;font-size:14px">(${s.pits.length} scouts, combined)</span>` : ''}</h3>${pitBlock(s.pits)}
     <h3>Match forms (${forms.length})</h3>
     ${forms.length ? `<p class="hint" style="margin-top:-6px">Tap a match to see the whole form.</p>${forms.map(m => `<details class="form">
       <summary><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span></summary>
       ${matchDetail(m)}<div class="row">${formButtons('match', m.id)}</div></details>`).join('')}` : '<p class="muted">None yet.</p>'}`);
 }
+// Every written answer from every match, grouped by question, so nothing a
+// scout wrote is hidden inside a single form.
+const TEXT_Q = [['Auto notes', m => m.auto.notes], ['Teleop notes', m => m.tele.notes], ['Endgame notes', m => m.end.notes],
+  ['Penalty details', m => m.extra.penNotes], ['What broke', m => m.extra.brkNotes], ['Problems', m => m.extra.probNotes],
+  ['Their strategy', m => m.extra.strategy], ['Overall summary', m => m.extra.overall]];
+function writtenBlock(ms) {
+  const groups = TEXT_Q.map(([q, f]) => [q, ms.filter(m => f(m) && f(m).trim()).sort((a, b) => a.match - b.match).map(m =>
+    `<div class="quote"><span class="muted">Match ${esc(m.match)}${m.scouter ? ' · ' + esc(m.scouter) : ''}:</span> ${esc(f(m).trim())}</div>`)]).filter(g => g[1].length);
+  const types = tally(ms.map(m => m.robotType).filter(Boolean));
+  if (!groups.length && !Object.keys(types).length) return '';
+  return `<h3>What scouts wrote</h3>${Object.keys(types).length ? `<p><b>Robot type:</b> ${Object.entries(types).map(([k, n]) => `${esc(k)}${n > 1 || Object.keys(types).length > 1 ? ` ×${n}` : ''}`).join(' / ')}</p>` : ''}
+    ${groups.map(([q, items]) => `<div style="margin:8px 0"><b style="font-size:14px">${q} (${items.length})</b>${items.join('')}</div>`).join('')}`;
+}
 // The answers on one match form, in the order the form asks them.
 function matchDetail(m) {
   return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
     <p><b>Auto:</b> preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
-    <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
+    <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `${(m.tele.beachWhere || []).length ? ' (' + esc(m.tele.beachWhere.join(', ')) + ')' : ''}, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
     <b>Extra:</b> ${m.extra.penalties} penalties${m.extra.penKinds.length ? ' (' + esc(m.extra.penKinds.join(', ')) + ')' : ''}, broke down ${yn(m.extra.breakdown)}, driver ${m.extra.driver ?? '—'}/5${m.extra.problems.length ? '<br><b>Problems:</b> ' + esc(m.extra.problems.join(', ')) : ''}</p>
     ${noteLines(m) || '<div class="muted">No written notes.</div>'}`;
 }
-const formButtons = (kind, id) => `<button class="btn small" data-act="edit" data-kind="${kind}" data-id="${esc(id)}">Edit</button>${kind === 'match' ? `<button class="btn small" data-act="qr" data-id="${esc(id)}">QR code</button>` : ''}<button class="btn small danger" data-act="del" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`;
+const formButtons = (kind, id) => `<button class="btn small" data-act="edit" data-kind="${kind}" data-id="${esc(id)}">Edit</button><button class="btn small" data-act="qr" data-kind="${kind}" data-id="${esc(id)}">QR code</button><button class="btn small danger" data-act="del" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`;
 function openMatch(id) {
   const m = matches.find(x => x.id === id); if (!m) return;
   openDialog(`<h2 style="margin-top:0">Team ${esc(m.team)} · Match ${esc(m.match)}</h2>
@@ -728,7 +867,7 @@ $('#dlgBody').addEventListener('click', e => {
   const { act, kind, id } = b.dataset;
   if (act === 'edit') editForm(kind, id);
   else if (act === 'del') deleteForm(kind, id);
-  else if (act === 'qr') showQR([matches.find(x => x.id === id)].filter(Boolean), 0);
+  else if (act === 'qr') showQR([(kind === 'pit' ? pits : matches).find(x => x.id === id)].filter(Boolean), 0);
   else if (act === 'team') openTeam(id);
 });
 
@@ -814,6 +953,57 @@ function profileBlock(s) {
   return `<h3>Compared with the event</h3><div class="legend"><span><i></i>This team</span><span><b></b>Event average</span><span>Overall ${rankVal(RANK[0], overall(s))}</span></div><div class="prof">${rows}</div>`;
 }
 
+/* ================= schedule ================= */
+// Pulled from The Blue Alliance by event code, then kept on the device so it
+// still shows at a venue with no signal. Quals only: playoff matches aren't
+// known until alliances are picked.
+K.sched = 'frcs.sched';
+let sched = LS.get(K.sched, null);   // { event, loaded, matches: [{ n, red: [], blue: [] }] }
+const eventKey = () => String(settings.event || '').trim().toLowerCase();
+async function loadSchedule() {
+  const ev = eventKey();
+  if (!ev) return toast('Enter the event code in Sync & Settings first');
+  if (!settings.tbaKey) return toast('Add a Blue Alliance key in Sync & Settings first');
+  $('#btnSched').disabled = true; $('#schedNote').textContent = 'Loading…';
+  try {
+    const res = await fetch(`https://www.thebluealliance.com/api/v3/event/${encodeURIComponent(ev)}/matches/simple`, { headers: { 'X-TBA-Auth-Key': settings.tbaKey.trim() } });
+    if (res.status === 401) throw new Error('The Blue Alliance key was rejected. Check it in Settings.');
+    if (res.status === 404) throw new Error(`No event called "${ev}". Event codes look like 2026miket.`);
+    if (!res.ok) throw new Error('The Blue Alliance answered ' + res.status);
+    const num = k => k.replace(/^frc/, '');
+    const list = (await res.json()).filter(m => m.comp_level === 'qm')
+      .map(m => ({ n: m.match_number, red: m.alliances.red.team_keys.map(num), blue: m.alliances.blue.team_keys.map(num) }))
+      .sort((a, b) => a.n - b.n);
+    sched = { event: ev, loaded: Date.now(), matches: list };
+    LS.set(K.sched, sched);
+    toast(list.length ? `Loaded ${list.length} qualification matches` : 'No schedule posted for this event yet');
+  } catch (err) {
+    toast(/fetch/i.test(err.message) ? 'No connection. Showing the saved schedule if there is one.' : err.message);
+  } finally { $('#btnSched').disabled = false; renderSchedule(); }
+}
+function renderSchedule() {
+  const ev = eventKey();
+  $('#schedEvent').textContent = ev ? `Event: ${ev}` : 'No event code yet. Set it in Sync & Settings.';
+  const mine = sched && sched.event === ev ? sched : null;
+  $('#schedNote').textContent = !ev ? '' : mine ? `Saved on this device ${new Date(mine.loaded).toLocaleString()}. Load again to pick up changes.`
+    : settings.tbaKey ? 'Not loaded yet. Needs internet once; after that it works offline.' : 'Add a Blue Alliance key in Sync & Settings, then load.';
+  if (!mine || !mine.matches.length) { $('#schedTable').innerHTML = ''; return; }
+  const done = new Set(matches.map(m => `${m.team}|${m.match}`));
+  const us = cleanTeam(settings.ourTeam);
+  const cell = (t, side, i, n) => `<td class="t ${side}1${t === us ? ' us' : ''}${done.has(`${t}|${n}`) ? ' done' : ''}" data-st="${t}|${n}|${side === 'r' ? 'R' : 'B'}|${i + 1}">${t}</td>`;
+  $('#schedTable').innerHTML = `<thead><tr><th>Match</th><th colspan="3">Red</th><th colspan="3">Blue</th></tr></thead><tbody>${mine.matches.map(m =>
+    `<tr><td>Q${m.n}</td>${m.red.map((t, i) => cell(t, 'r', i, m.n)).join('')}${m.blue.map((t, i) => cell(t, 'b', i, m.n)).join('')}</tr>`).join('')}</tbody>`;
+}
+$('#btnSched').onclick = loadSchedule;
+$('#schedTable').onclick = e => {
+  const c = e.target.closest('[data-st]'); if (!c) return;
+  const [team, match, alliance, station] = c.dataset.st.split('|');
+  if (cur.id && matches.some(x => x.id === cur.id) && !confirm('You are editing a saved match. Start a new form instead?')) return;
+  cur = Object.assign(blankMatch(), { team, match, alliance, station });
+  persistDraft('match'); renderForm($('#matchForm')); show('match'); window.scrollTo(0, 0);
+  toast(`Scouting team ${team} in Q${match}`);
+};
+
 /* ================= drive team view ================= */
 function renderDriveInputs() {
   const mk = i => `<input type="text" inputmode="numeric" data-lineup="${i}" value="${esc(settings.lineup[i])}" placeholder="Team" style="width:90px">`;
@@ -825,11 +1015,11 @@ function renderDrive() {
     t = cleanTeam(t); if (!t) return '';
     const s = teamStats(t), side = i < 3 ? 'R' : 'B';
     const strat = s.ms.map(m => m.extra.strategy).filter(Boolean).slice(-2);
-    const pitStrat = s.pit && s.pit.strategy;
+    const pitStrat = s.pits.map(p => p.strategy).filter(Boolean);
     return `<div class="tcard ${side}"><h3>${esc(t)}${t === settings.ourTeam ? ' <span class="muted" style="font-size:14px">(us)</span>' : ''}</h3>
       <div class="stats"><span class="stat">Scores <b>${s.n ? s.teleScr + '/' + s.n : '—'}</b></span><span class="stat">Tele <b>${pct(s.teleAcc)}</b></span><span class="stat">Climb <b>${s.n ? s.climbOk + '/' + s.n : '—'}</b></span><span class="stat">Best rung <b>${s.bestRung || '—'}</b></span><span class="stat">${s.n} matches</span></div>
       <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
-      ${[pitStrat, ...strat].filter(Boolean).map(x => `<div class="quote">${esc(x)}</div>`).join('')}
+      ${[...pitStrat, ...strat].filter(Boolean).map(x => `<div class="quote">${esc(x)}</div>`).join('')}
       <button class="btn small" data-team="${esc(t)}" style="margin-top:6px">All notes</button></div>`;
   }).join('') || '<p class="muted">Enter team numbers above.</p>';
 }
@@ -845,8 +1035,9 @@ $('#view-guide').innerHTML = `
 <dt>Accuracy</dt><dd>Out of the balls they shot, about how many went in. A guess is fine: about half = ~50%.</dd>
 <dt>Balls collected / scored</dt><dd>Yes or No: did the robot pick up any balls, and did it get any in? You don't need to count them.</dd>
 <dt>Hang / get down</dt><dd>In auto, did the robot hang on the structure, and did it get back down to keep playing?</dd>
-<dt>Beached</dt><dd>The robot got stuck on something (a bump, a game piece, another robot) and couldn't drive. <b>Recovered</b> = it got free on its own.</dd>
-<dt>Defense</dt><dd>Blocking or pushing the other alliance instead of scoring. Tap the map where it happened.</dd>
+<dt>Beached</dt><dd>The robot got stuck and couldn't drive: on the bump, in the trench, on a ball, or against another robot. Tap where it happened.</dd>
+<dt>Recovered</dt><dd>After getting beached, the robot got free <b>on its own</b> and kept playing. If a ref or another robot had to free it, or it stayed stuck, that's No.</dd>
+<dt>Defense</dt><dd>Blocking or pushing the other alliance instead of scoring. Counts in the Center, the Transition zones and the <b>opponent's</b> alliance zone. Not the depots, the ladders, or their own alliance zone. Tap the map where it happened.</dd>
 <dt>Depot / Ladder / Center</dt><dd>Field areas. Depot = where balls are stored near each alliance. Ladder = the climbing structure. Center = the middle of the field.</dd>
 <dt>Hub</dt><dd>The scoring target in each Transition zone: red hub on the red side, blue hub on the blue side. On the defense map you can't drop a dot on a hub.</dd>
 <dt>Rung</dt><dd>Which bar they climbed to. 1 is lowest.</dd>
@@ -883,7 +1074,9 @@ function showQR(list, i) {
   i = Math.max(0, Math.min(i, list.length - 1));
   const e = list[i];
   let svg;
-  try { svg = qrSVG(JSON.stringify(compact(e))); }
+  // photos are far too big for a QR code; they travel by file / AirDrop instead
+  const { photo, ...qrData } = e;
+  try { svg = qrSVG(JSON.stringify(compact(qrData))); }
   catch (err) { svg = '<p style="color:#000;padding:20px">Too much text for one QR code. Use file export for this entry.</p>'; }
   const title = e.kind === 'pit' ? `Pit · Team ${esc(e.team)}` : `Team ${esc(e.team)} · Match ${esc(e.match)}`;
   openDialog(`<h2 style="margin:0">${title}</h2><p class="muted" style="margin:4px 0">${i + 1} of ${list.length} · ${esc(e.scouter || '')}</p>
@@ -906,7 +1099,9 @@ function mergeEntries(list) {
     if (!isPit) ballsYN(e);
     e.team = cleanTeam(e.team);
     const arr = isPit ? pits : matches, i = arr.findIndex(x => x.id === e.id);
-    if (i < 0) { arr.push(e); added++; } else if ((e.ts || 0) > (arr[i].ts || 0)) { arr[i] = e; updated++; }
+    // a QR code never carries the photo, so keep the one already here
+    if (isPit && !e.photo && i >= 0 && arr[i].photo) e.photo = arr[i].photo;
+    if (i < 0) { arr.push(e); added++; } else if ((e.ts || 0) > (arr[i].ts || 0) || (isPit && e.photo && !arr[i].photo)) { arr[i] = e; updated++; }
   }
   LS.set(K.matches, matches); LS.set(K.pits, pits); updateCount(); refreshViews();
   return { added, updated };
@@ -949,7 +1144,7 @@ function flatten(o, p = '', out = {}) {
   return out;
 }
 function toCSV(list, blank) {
-  const cols = Object.keys(flatten(blank));
+  const cols = Object.keys(flatten(blank)).filter(c => c !== 'photo');
   const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   return [cols.join(','), ...list.map(e => { const f = flatten(e); return cols.map(c => cell(c === 'ts' ? new Date(f.ts).toISOString() : f[c])).join(','); })].join('\r\n');
 }
@@ -1020,6 +1215,7 @@ function show(view) {
   if (view === 'data') renderData();
   if (view === 'drive') renderDrive();
   if (view === 'rank') renderRank();
+  if (view === 'sched') renderSchedule();
 }
 $('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
 $$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
