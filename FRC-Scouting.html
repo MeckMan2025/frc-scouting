@@ -62,6 +62,7 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .map text{fill:#fff;font-size:15px;font-weight:600;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#0008;stroke-width:3px}
 .map text.small{font-size:12px;font-weight:500}
 .map .dot{fill:var(--accent);stroke:#000;stroke-width:2}
+.map .hub polygon:first-child{stroke:#fff;stroke-width:3}
 /* tables */
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
@@ -326,21 +327,30 @@ const FIELD = {
     { name: 'Transition', x: 180, y: 10, w: 80, h: 380, fill: '#2b3a2d', label: 'Transition' },
     { name: 'Transition', x: 560, y: 10, w: 80, h: 380, fill: '#2b3a2d', label: 'Transition' },
     { name: 'Center', x: 260, y: 10, w: 300, h: 380, fill: '#33503a', label: 'Center' }
+  ],
+  // drawn on top of the Transition zones; defense dots can't go on them
+  hubs: [
+    { x: 220, y: 200, r: 34, fill: '#c0473d', label: 'Red Hub' },
+    { x: 600, y: 200, r: 34, fill: '#3d6ec0', label: 'Blue Hub' }
   ]
 };
+const hexPts = (h, r = h.r) => [0, 1, 2, 3, 4, 5].map(i => { const a = Math.PI / 3 * i + Math.PI / 6; return `${(h.x + r * Math.cos(a)).toFixed(1)},${(h.y + r * Math.sin(a)).toFixed(1)}`; }).join(' ');
+const hubAt = (x, y) => FIELD.hubs.find(h => Math.hypot(x - h.x, y - h.y) <= h.r);
 function fieldSVG(id) {
   const z = FIELD.zones.slice().reverse().map(r =>
     `<rect class="zone" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${r.fill}" rx="4"/>`).join('');
   const labels = FIELD.zones.map(r => {
     const big = r.w > 150;
-    const cy = r.name === 'Alliance Zone' ? 40 : r.name === 'Transition' ? 205 : r.y + r.h / 2 + 5;
+    const cy = r.name === 'Alliance Zone' ? 40 : r.name === 'Transition' ? 95 : r.y + r.h / 2 + 5;
     if (r.name === 'Transition') return `<text class="small" x="${r.x + r.w / 2}" y="${cy}" transform="rotate(-90 ${r.x + r.w / 2} ${cy})">${r.label}</text>`;
     if (r.name === 'Ladder') return `<text class="small" x="${r.x + r.w / 2}" y="${cy}" transform="rotate(-90 ${r.x + r.w / 2} ${cy})">${r.label}</text>`;
     return `<text class="${big ? '' : 'small'}" x="${r.x + r.w / 2}" y="${cy}">${r.label}</text>`;
   }).join('');
   return `<svg class="map" id="${id}" viewBox="0 0 ${FIELD.w} ${FIELD.h}" role="img" aria-label="Field map">
     <rect x="2" y="2" width="${FIELD.w - 4}" height="${FIELD.h - 4}" fill="none" stroke="#fff" stroke-width="3" rx="8"/>
-    ${z}<line x1="410" y1="10" x2="410" y2="390" stroke="#ffffff66" stroke-dasharray="8 6"/>${labels}<g class="dots"></g></svg>`;
+    ${z}<line x1="410" y1="10" x2="410" y2="390" stroke="#ffffff66" stroke-dasharray="8 6"/>${labels}
+    ${FIELD.hubs.map(h => `<g class="hub"><polygon points="${hexPts(h)}" fill="${h.fill}"/><polygon points="${hexPts(h, h.r * 0.55)}" fill="#0006" stroke="#fff8" stroke-width="2"/><text class="small" x="${h.x}" y="${h.y + h.r + 18}">${h.label}</text></g>`).join('')}
+    <g class="dots"></g></svg>`;
 }
 const zoneAt = (x, y) => (FIELD.zones.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) || {}).name;
 
@@ -488,6 +498,7 @@ $('#defMap').addEventListener('click', e => {
   pt.x = e.clientX; pt.y = e.clientY;
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
   const x = Math.round(p.x), y = Math.round(p.y);
+  if (hubAt(x, y)) return toast("That's the hub. Tap the field around it.");
   cur.tele.defDots.push([x, y]);
   const z = zoneAt(x, y);
   if (z && !cur.tele.defZones.includes(z)) cur.tele.defZones.push(z);
@@ -839,7 +850,7 @@ $('#dtCards').onclick = e => { const b = e.target.closest('[data-team]'); if (b)
 /* ================= field guide ================= */
 $('#view-guide').innerHTML = `
 <div class="card"><h2>Field map</h2>${fieldSVG('guideMap')}
-<p class="hint">This is a simplified drawing, not to scale. To match this season's field, edit <code>FIELD.zones</code> in the file.</p></div>
+<p class="hint">This is a simplified drawing, not to scale. To match this season's field, edit <code>FIELD.zones</code> and <code>FIELD.hubs</code> in the file.</p></div>
 <div class="card"><h2>What the words mean</h2><dl class="gloss">
 <dt>Cycle</dt><dd>One trip: pick up balls, then score them. Count one each time they score after collecting.</dd>
 <dt>Accuracy</dt><dd>Out of the balls they shot, about how many went in. A guess is fine: about half = ~50%.</dd>
@@ -848,6 +859,7 @@ $('#view-guide').innerHTML = `
 <dt>Beached</dt><dd>The robot got stuck on something (a bump, a game piece, another robot) and couldn't drive. <b>Recovered</b> = it got free on its own.</dd>
 <dt>Defense</dt><dd>Blocking or pushing the other alliance instead of scoring. Tap the map where it happened.</dd>
 <dt>Depot / Ladder / Center</dt><dd>Field areas. Depot = where balls are stored near each alliance. Ladder = the climbing structure. Center = the middle of the field.</dd>
+<dt>Hub</dt><dd>The scoring target in each Transition zone: red hub on the red side, blue hub on the blue side. On the defense map you can't drop a dot on a hub.</dd>
 <dt>Rung</dt><dd>Which bar they climbed to. 1 is lowest.</dd>
 <dt>Breakdown / comeback</dt><dd>Stopped working during the match (no movement, lost comms, broken arm). Comeback = started working again.</dd>
 <dt>Penalty</dt><dd>Watch for the ref's flag and the score display. Pick the type if you know it; otherwise write what you saw.</dd>
