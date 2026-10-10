@@ -300,7 +300,7 @@ function blankMatch() {
 function blankPit() {
   return {
     kind: 'pit', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event, team: '',
-    robotName: '', drivers: '', drive: null, intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
+    robotName: '', drivers: '', drive: null, swerve: '', gearRatio: '', intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
     beachRisk: null, strengths: '', problems: [], probNotes: '', strategy: '', notes: ''
   };
 }
@@ -351,6 +351,8 @@ const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinni
 const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
 const ROBOT_TYPES = ['Under trench', 'Over bump', 'Both'];
 const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
+// swerve modules teams commonly run; "Other" for anything else
+const SWERVES = ['SDS MK4i', 'SDS MK4n', 'SDS MK4c', 'SDS MK5n', 'WCP Swerve X2i', 'WCP Swerve X2', 'WCP Swerve XS', 'REV MAXSwerve', 'Thrifty Swerve', 'AndyMark Swerve & Steer', 'Other'];
 const STARTS = [['Left', 'Left'], ['Middle', 'Middle'], ['Right', 'Right']];
 const STOPS = [['none', 'No'], ['astop', 'A-stop'], ['estop', 'E-stop']];
 const stopLabel = v => v === 'estop' ? 'E-stop' : v === 'astop' ? 'A-stop' : v === 'none' ? 'No' : '—';
@@ -475,6 +477,8 @@ $('#pitForm').innerHTML = `
   ${input('team', 'Team #', 'e.g. 254', true)}${input('scouter', 'Scouter')}
   ${input('robotName', 'Robot name', 'What they call the robot')}${input('drivers', 'Driver name(s)', 'Driver and operator')}
   ${seg('drive', 'Drivetrain', [['Swerve', 'Swerve'], ['Tank', 'Tank'], ['Mecanum', 'Mecanum'], ['Other', 'Other']])}
+  ${showIf('drive', select('swerve', 'Type of swerve', SWERVES), 'Swerve')}
+  ${input('gearRatio', 'Drive gear ratio', 'e.g. L2, L3, 6.75:1')}
   ${seg('intake', 'Collects balls from', [['Ground', 'Ground'], ['Depot', 'Depot'], ['Both', 'Both'], ['None', 'None']])}
   ${counter('capacity', 'Balls it can hold', [1, 5, 10])}
   ${seg('climbMax', 'Highest rung', [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3']])}
@@ -561,6 +565,7 @@ document.addEventListener('click', e => {
     if (k === 'tele.defense' && m.tele.defense !== true) { m.tele.defZones = []; m.tele.defDots = []; }
     if (k === 'tele.beached' && m.tele.beached !== true) { m.tele.beachWhere = []; m.tele.recovered = null; }
   }
+  if (name === 'pit' && k === 'drive' && m.drive !== 'Swerve') m.swerve = '';
   persistDraft(name); renderForm(form);
 });
 // 'change' too: some phones only report a dropdown pick that way
@@ -863,7 +868,7 @@ const TABLES = {
   },
   pits: {
     rows: () => pits,
-    cols: [['Team', p => +p.team], ['Robot', p => p.robotName || null], ['Driver', p => p.drivers || null], ['Drive', p => p.drive], ['Intake', p => p.intake], ['Holds', p => p.capacity], ['Rung', p => p.climbMax], ['Gets down', p => p.canGetDown, yn], ['Beach risk', p => p.beachRisk, yn], ['Scouter', p => p.scouter]],
+    cols: [['Team', p => +p.team], ['Robot', p => p.robotName || null], ['Driver', p => p.drivers || null], ['Drive', p => p.drive], ['Swerve', p => p.swerve || null], ['Gear ratio', p => p.gearRatio || null], ['Intake', p => p.intake], ['Holds', p => p.capacity], ['Rung', p => p.climbMax], ['Gets down', p => p.canGetDown, yn], ['Beach risk', p => p.beachRisk, yn], ['Scouter', p => p.scouter]],
     open: p => openTeam(p.team)
   }
 };
@@ -911,7 +916,7 @@ function pitBlock(list) {
     if (!v.length) return '';
     return v.length === 1 ? `${label}${v[0]}${unit}` : `${label}avg ${fmt(avg(v), 1)}${unit} (${v.join(', ')})`;
   };
-  const facts = [fact('', p => p.robotName, v => `“${esc(v)}”`), fact('driver: ', p => p.drivers), fact('', p => p.drive, v => `${esc(v)} drive`),
+  const facts = [fact('', p => p.robotName, v => `“${esc(v)}”`), fact('driver: ', p => p.drivers), fact('', p => p.drive, v => `${esc(v)} drive`), fact('', p => p.swerve), fact('gear ratio ', p => p.gearRatio),
     fact('intake: ', p => p.intake), num('holds ', p => p.capacity, ' balls', true), num('highest rung ', p => p.climbMax),
     fact('', p => p.canGetDown, v => v === 'true' ? 'can get down' : "can't get down"), fact('', p => p.beachRisk, v => v === 'true' ? 'gets beached often' : 'rarely beached')].filter(Boolean);
   const who = p => many && p.scouter ? ` <span class="muted">— ${esc(p.scouter)}</span>` : '';
