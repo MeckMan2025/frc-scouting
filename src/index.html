@@ -91,6 +91,30 @@ dialog::backdrop{background:#000a}
 #toast.show{transform:translateX(-50%) translateY(0)}
 dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0} dl.gloss dt{font-weight:700;color:var(--accent)} dl.gloss dd{margin:0}
 @media (max-width:520px){ dl.gloss{grid-template-columns:1fr} dl.gloss dd{margin-bottom:6px} }
+/* rank */
+.rankpick{display:flex;flex-direction:column;gap:8px}
+.rankpick .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rankpick .grp>span{font-size:12px;font-weight:700;color:var(--muted);width:64px}
+.rankpick button{min-height:36px;padding:6px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-size:14px}
+.rankpick button.on{background:var(--c,var(--accent));border-color:var(--c,var(--accent));color:#0d0f12;font-weight:700}
+.bars{display:grid;grid-template-columns:auto auto 1fr auto;gap:2px 10px;align-items:center;font-variant-numeric:tabular-nums}
+.bars .r{display:contents;cursor:pointer}
+.bars .r>*{padding:5px 0}
+.bars .r:hover>*{background:var(--panel2)}
+.bars .rk{color:var(--muted);font-size:13px;text-align:right;padding-left:6px}
+.bars .tm{font-weight:700}
+.bars .tm small{font-weight:400;color:var(--muted);margin-left:6px}
+.track{position:relative;height:16px;border-bottom:1px solid var(--line)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:0 4px 4px 0;background:var(--c,var(--accent));min-width:2px}
+.track b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text);opacity:.75}
+.bars .val{text-align:right;padding-right:6px;font-size:14px}
+.prof{display:grid;grid-template-columns:minmax(110px,max-content) 1fr auto;gap:6px 10px;align-items:center;font-size:14px;font-variant-numeric:tabular-nums}
+.prof .lbl{color:var(--muted)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:6px 0 10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:0 3px 3px 0;background:var(--muted)}
+.legend b{display:inline-block;width:2px;height:14px;background:var(--text);opacity:.75}
+#tip{position:fixed;z-index:50;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 6px 20px #0008;max-width:240px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -101,6 +125,7 @@ dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:
     <button data-view="match">Match</button>
     <button data-view="pit">Pit</button>
     <button data-view="data">Data</button>
+    <button data-view="rank">Rank</button>
     <button data-view="drive">Drive Team</button>
     <button data-view="guide">Field Guide</button>
     <button data-view="sync">Sync &amp; Settings</button>
@@ -120,6 +145,20 @@ dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:
     </div>
     <p class="hint">Tap a column to sort. Tap a row for the written notes.</p>
     <div class="tablewrap"><table id="dataTable"></table></div>
+  </section>
+
+  <section class="view" id="view-rank">
+    <div class="card">
+      <h2>Rank teams by</h2>
+      <div class="rankpick" id="rankPick"></div>
+      <p class="hint" id="rankNote"></p>
+    </div>
+    <div class="card">
+      <h2 id="rankTitle"></h2>
+      <div class="legend"><span><i id="rankKey"></i><span id="rankKeyLbl"></span></span><span><b></b>Event average</span></div>
+      <div class="bars" id="rankBars"></div>
+      <p class="hint">Tap a team for its full profile. Teams with only 1 match are marked, since one match can be a fluke.</p>
+    </div>
   </section>
 
   <section class="view" id="view-drive">
@@ -179,6 +218,7 @@ dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:
 
 <dialog id="dlg"><div id="dlgBody"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="dlgClose">Close</button></div></dialog>
 <div id="toast"></div>
+<div id="tip" hidden></div>
 
 <script src="lib/qrcode.min.js"></script>
 <script src="lib/jsQR.min.js"></script>
@@ -202,7 +242,7 @@ const parseVal = s => s === 'true' ? true : s === 'false' ? false : /^-?\d+(\.\d
 let settings = Object.assign({ scouter: '', event: '', ourTeam: '', qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
 let matches = LS.get(K.matches, []);
 let pits = LS.get(K.pits, []);
-const ui = Object.assign({ view: 'match', dataMode: 'teams', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
+const ui = Object.assign({ view: 'match', dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
 const saveSettings = () => LS.set(K.settings, settings);
 const saveUI = () => LS.set(K.ui, ui);
 
@@ -608,6 +648,7 @@ function openTeam(team) {
   const s = teamStats(team);
   openDialog(`<h2 style="margin-top:0">Team ${esc(team)}</h2>
     <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
+    ${profileBlock(s)}
     <h3>Pit scouting</h3>${pitBlock(s.pit)}
     <h3>Match notes</h3>${s.ms.length ? s.ms.slice().reverse().map(m => `<div style="margin:10px 0"><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span>${noteLines(m) || '<div class="muted">No written notes.</div>'}</div>`).join('') : '<p class="muted">None.</p>'}`);
 }
@@ -625,6 +666,87 @@ function openMatch(id) {
   $('#mQR').onclick = () => showQR([m], 0);
   $('#mTeam').onclick = () => openTeam(m.team);
   $('#mDel').onclick = () => { if (!confirm(`Delete team ${m.team} match ${m.match}?`)) return; matches = matches.filter(x => x.id !== m.id); LS.set(K.matches, matches); closeDialog(); renderData(); updateCount(); };
+}
+
+/* ================= rank ================= */
+// One entry per question worth ranking on. get() returns the team's number,
+// or null when nothing was recorded. max fixes the scale (100 for shares);
+// without it the best team sets the scale. low: smaller is better.
+const share = (k) => s => s.n ? s[k] / s.n * 100 : null;
+const SEC = { all: ['Overall', 'var(--accent)'], auto: ['Auto', 'var(--auto)'], tele: ['Teleop', 'var(--tele)'], end: ['Endgame', 'var(--end)'], extra: ['Extra', 'var(--accent)'] };
+const RANK = [
+  { id: 'overall', sec: 'all', label: 'Overall', max: 100, unit: '%', get: s => overall(s), q: 'Average of: scores in auto, scores in teleop, teleop accuracy, climb success, no breakdowns and driver skill.' },
+  { id: 'autoCol', sec: 'auto', label: 'Collects', max: 100, unit: '%', get: share('autoCol'), q: 'Auto · Balls collected? — share of matches answered Yes.' },
+  { id: 'autoScr', sec: 'auto', label: 'Scores', max: 100, unit: '%', get: share('autoScr'), q: 'Auto · Balls scored? — share of matches answered Yes.' },
+  { id: 'autoAcc', sec: 'auto', label: 'Accuracy', max: 100, unit: '%', get: s => s.autoAcc, q: 'Auto · Scoring accuracy — average of the estimates.' },
+  { id: 'autoCyc', sec: 'auto', label: 'Cycles', get: s => s.autoCyc, q: 'Auto · Cycles — average per match.' },
+  { id: 'autoHang', sec: 'auto', label: 'Hangs', max: 100, unit: '%', get: share('autoHang'), q: 'Auto · Hang in auto? — share of matches answered Yes.' },
+  { id: 'teleCol', sec: 'tele', label: 'Collects', max: 100, unit: '%', get: share('teleCol'), q: 'Teleop · Balls collected? — share of matches answered Yes.' },
+  { id: 'teleScr', sec: 'tele', label: 'Scores', max: 100, unit: '%', get: share('teleScr'), q: 'Teleop · Balls scored? — share of matches answered Yes.' },
+  { id: 'teleAcc', sec: 'tele', label: 'Accuracy', max: 100, unit: '%', get: s => s.teleAcc, q: 'Teleop · Scoring accuracy — average of the estimates.' },
+  { id: 'beached', sec: 'tele', label: 'Gets beached', max: 100, unit: '%', low: true, get: share('beached'), q: 'Teleop · Got beached / stuck? — share of matches answered Yes. Lower is better.' },
+  { id: 'def', sec: 'tele', label: 'Plays defense', max: 100, unit: '%', get: share('def'), q: 'Teleop · Played defense? — share of matches answered Yes.' },
+  { id: 'endCyc', sec: 'end', label: 'Cycles', get: s => s.endCyc, q: 'Endgame · Cycles — average per match.' },
+  { id: 'climb', sec: 'end', label: 'Climb success', max: 100, unit: '%', get: share('climbOk'), q: 'Endgame · Climb — share of matches they climbed.' },
+  { id: 'rung', sec: 'end', label: 'Best rung', max: 3, get: s => s.n ? s.bestRung : null, q: 'Endgame · Rung # — highest rung reached in any match.' },
+  { id: 'reliable', sec: 'extra', label: 'No breakdowns', max: 100, unit: '%', get: s => s.n ? (1 - s.broke / s.n) * 100 : null, q: 'Extra · Broke down? — share of matches with no breakdown.' },
+  { id: 'driver', sec: 'extra', label: 'Driver skill', max: 5, get: s => s.driver, q: 'Extra · Driver skill — average rating out of 5.' },
+  { id: 'pen', sec: 'extra', label: 'Penalties', low: true, get: s => s.n ? s.pen / s.n : null, q: 'Extra · Penalties — average per match. Lower is better.' },
+];
+function overall(s) {
+  if (!s.n) return null;
+  const parts = [s.autoScr / s.n, s.teleScr / s.n, s.teleAcc == null ? null : s.teleAcc / 100, s.climbOk / s.n, 1 - s.broke / s.n, s.driver == null ? null : s.driver / 5].filter(v => v != null);
+  return parts.reduce((a, b) => a + b, 0) / parts.length * 100;
+}
+const rankVal = (r, v) => v == null ? '—' : r.unit === '%' ? Math.round(v) + '%' : fmt(v, 1);
+// scale shared by every team for one metric, so bar lengths compare honestly
+function rankScale(r, stats) {
+  const vals = stats.map(r.get).filter(v => v != null);
+  const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  return { avg, max: r.max || Math.max(...vals, 0) || 1 };
+}
+function renderRank() {
+  const r = RANK.find(x => x.id === ui.rankBy) || RANK[0];
+  $('#rankPick').innerHTML = Object.entries(SEC).map(([k, [name, c]]) =>
+    `<div class="grp" style="--c:${c}"><span>${name}</span>${RANK.filter(x => x.sec === k).map(x => `<button data-rank="${x.id}" class="${x.id === r.id ? 'on' : ''}">${esc(x.sec === 'all' ? '★ Overall' : x.label)}</button>`).join('')}</div>`).join('');
+  $('#rankNote').textContent = r.q;
+  const color = SEC[r.sec][1];
+  $('#rankTitle').textContent = r.sec === 'all' ? 'Overall rank' : `${SEC[r.sec][0]}: ${r.label}`;
+  $('#rankKey').style.background = color; $('#rankKeyLbl').textContent = 'Team';
+  const stats = allTeams().map(teamStats).filter(s => s.n);
+  const { avg, max } = rankScale(r, stats);
+  const rows = stats.map(s => ({ s, v: r.get(s) })).filter(x => x.v != null).sort((a, b) => r.low ? a.v - b.v : b.v - a.v);
+  $('#rankBars').style.setProperty('--c', color);
+  $('#rankBars').innerHTML = rows.length ? rows.map((x, i) => `<div class="r" data-team="${esc(x.s.team)}" data-tip="Team ${esc(x.s.team)}: ${rankVal(r, x.v)} · event avg ${rankVal(r, avg)} · ${x.s.n} match${x.s.n > 1 ? 'es' : ''}">
+      <span class="rk">${i + 1}</span><span class="tm">${esc(x.s.team)}${x.s.n < 2 ? '<small>1 match</small>' : ''}</span>
+      <span class="track"><i style="width:${Math.min(100, x.v / max * 100)}%"></i>${avg != null ? `<b style="left:${Math.min(100, avg / max * 100)}%"></b>` : ''}</span>
+      <span class="val">${rankVal(r, x.v)}</span></div>`).join('')
+    : '<p class="muted" style="grid-column:1/-1">No match data yet. Scout a match or import data.</p>';
+}
+$('#rankPick').onclick = e => { const b = e.target.closest('[data-rank]'); if (b) { ui.rankBy = b.dataset.rank; saveUI(); renderRank(); } };
+$('#rankBars').onclick = e => { const r = e.target.closest('[data-team]'); if (r) { hideTip(); openTeam(r.dataset.team); } };
+// hover details for mouse users; on a phone a tap opens the team instead
+const tip = $('#tip');
+function hideTip() { tip.hidden = true; }
+document.addEventListener('pointermove', e => {
+  const el = e.pointerType === 'mouse' && e.target.closest('[data-tip]');
+  if (!el) return hideTip();
+  tip.textContent = el.dataset.tip; tip.hidden = false;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = e.clientY + 16 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+});
+// a team against the event, one row per question
+function profileBlock(s) {
+  if (!s.n) return '';
+  const all = allTeams().map(teamStats).filter(t => t.n);
+  const rows = RANK.filter(r => r.sec !== 'all').map(r => {
+    const v = r.get(s); if (v == null) return '';
+    const { avg, max } = rankScale(r, all);
+    return `<span class="lbl">${SEC[r.sec][0]} · ${esc(r.label)}</span>
+      <span class="track" style="--c:${SEC[r.sec][1]}" data-tip="${esc(r.q)} Team ${rankVal(r, v)} · event avg ${rankVal(r, avg)}"><i style="width:${Math.min(100, v / max * 100)}%"></i>${avg != null ? `<b style="left:${Math.min(100, avg / max * 100)}%"></b>` : ''}</span>
+      <span>${rankVal(r, v)}</span>`;
+  }).join('');
+  return `<h3>Compared with the event</h3><div class="legend"><span><i></i>This team</span><span><b></b>Event average</span><span>Overall ${rankVal(RANK[0], overall(s))}</span></div><div class="prof">${rows}</div>`;
 }
 
 /* ================= drive team view ================= */
@@ -824,13 +946,14 @@ $('#dlgClose').onclick = closeDialog;
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); }
 function updateCount() { $('#count').textContent = `${matches.length} matches · ${pits.length} pit`; }
-function refreshViews() { renderForm($('#matchForm')); renderForm($('#pitForm')); renderData(); renderDrive(); }
+function refreshViews() { renderForm($('#matchForm')); renderForm($('#pitForm')); renderData(); renderDrive(); renderRank(); }
 function show(view) {
   ui.view = view; saveUI();
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
   $$('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + view));
   if (view === 'data') renderData();
   if (view === 'drive') renderDrive();
+  if (view === 'rank') renderRank();
 }
 $('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
 $$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
