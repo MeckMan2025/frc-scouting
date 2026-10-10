@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111418">
+<title>FRC Scouting</title>
+<style>
+:root{
+  --bg:#0f1216; --panel:#181c22; --panel2:#20252d; --line:#2c333d; --text:#e8ecf1; --muted:#9aa4b1;
+  --accent:#f5c400; --accent-ink:#1a1500; --red:#e5484d; --blue:#3b82f6; --ok:#30a46c; --warn:#f76b15;
+  --auto:#8e6cf0; --tele:#2fa4c9; --end:#e0a23a; --extra:#9aa4b1;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+button,input,textarea,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:10;background:#111418ee;backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.topbar{display:flex;align-items:center;gap:10px;padding:8px 16px}
+.topbar h1{font-size:18px;margin:0;color:var(--accent);letter-spacing:.3px}
+.topbar .count{margin-left:auto;color:var(--muted);font-size:13px}
+nav{display:flex;gap:4px;overflow-x:auto;padding:0 12px 8px;scrollbar-width:none}
+nav button{flex:0 0 auto;background:none;border:1px solid var(--line);border-radius:999px;padding:6px 14px;color:var(--muted);cursor:pointer}
+nav button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+main{max-width:980px;margin:0 auto;padding:12px 16px 80px}
+.view{display:none}.view.on{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 14px}
+.card>h2{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:8px}
+.card>h2 .tag{font-size:12px;padding:2px 8px;border-radius:6px;color:#fff}
+.sec-auto{border-left:5px solid var(--auto)} .sec-auto .tag{background:var(--auto)}
+.sec-tele{border-left:5px solid var(--tele)} .sec-tele .tag{background:var(--tele)}
+.sec-end{border-left:5px solid var(--end)} .sec-end .tag{background:var(--end)}
+.sec-extra{border-left:5px solid var(--extra)} .sec-extra .tag{background:#5b6573}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px 16px}
+.field{min-width:0}.field.wide{grid-column:1/-1}
+.field>label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+.field>label small{color:#6f7885}
+input[type=text],input[type=number],textarea,select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+textarea{resize:vertical}
+input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.counter{display:flex;align-items:stretch;gap:6px}
+.counter button{min-width:48px;min-height:48px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);font-size:17px;font-weight:600;cursor:pointer}
+.counter button.minus{color:var(--muted)}
+.counter output{min-width:56px;display:grid;place-items:center;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.seg,.chips{display:flex;flex-wrap:wrap;gap:6px}
+.seg button,.chips button{min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);cursor:pointer}
+.seg button.on,.chips button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.seg.alliance button[data-v=R].on{background:var(--red);border-color:var(--red);color:#fff}
+.seg.alliance button[data-v=B].on{background:var(--blue);border-color:var(--blue);color:#fff}
+.chips button{min-height:38px;padding:6px 12px;font-size:14px}
+.btn{min-height:46px;padding:10px 18px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:#ff8b8e;border-color:#5a2a2c}
+.btn.small{min-height:36px;padding:6px 12px;font-size:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.muted{color:var(--muted)} .hint{color:var(--muted);font-size:13px;margin:4px 0 0}
+.savebar{position:sticky;bottom:0;padding:10px 0;background:linear-gradient(transparent,var(--bg) 30%);display:flex;gap:8px}
+.savebar .btn.primary{flex:1;font-size:18px;min-height:54px}
+/* field map */
+.map{width:100%;height:auto;display:block;border-radius:10px;background:#1d2a1f;touch-action:manipulation}
+.map .zone{stroke:#ffffff55;stroke-width:2}
+.map text{fill:#fff;font-size:15px;font-weight:600;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#0008;stroke-width:3px}
+.map text.small{font-size:12px;font-weight:500}
+.map .dot{fill:var(--accent);stroke:#000;stroke-width:2}
+/* tables */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel2);cursor:pointer;user-select:none;font-weight:600;color:var(--muted)}
+th.sorted{color:var(--accent)}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--panel2)}
+td .r{color:var(--red);font-weight:700} td .b{color:var(--blue);font-weight:700}
+.flag{color:var(--warn)} .good{color:var(--ok)}
+/* drive team */
+.dtgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;border-top:5px solid var(--line)}
+.tcard.R{border-top-color:var(--red)} .tcard.B{border-top-color:var(--blue)}
+.tcard h3{margin:0 0 6px;font-size:22px}
+.stats{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.stat{background:var(--panel2);border-radius:8px;padding:4px 8px;font-size:13px}
+.stat b{font-size:15px}
+.tcard ul{margin:6px 0;padding-left:18px} .tcard li{margin:2px 0}
+.quote{border-left:3px solid var(--line);padding-left:8px;margin:4px 0;color:#cfd6df;font-size:14px}
+/* dialog */
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:16px;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 40px)}
+dialog::backdrop{background:#000a}
+.qrbox{background:#fff;border-radius:12px;padding:10px;margin:10px auto;max-width:420px}
+.qrbox svg{width:100%;height:auto;display:block}
+#scanVideo{width:100%;border-radius:12px;background:#000;max-height:60vh}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120px);background:var(--accent);color:var(--accent-ink);padding:12px 18px;border-radius:12px;font-weight:600;transition:transform .25s;z-index:100;max-width:calc(100vw - 32px)}
+#toast.show{transform:translateX(-50%) translateY(0)}
+dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0} dl.gloss dt{font-weight:700;color:var(--accent)} dl.gloss dd{margin:0}
+@media (max-width:520px){ dl.gloss{grid-template-columns:1fr} dl.gloss dd{margin-bottom:6px} }
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <div class="topbar"><h1>⚙ FRC Scouting</h1><span class="count" id="count"></span></div>
+  <nav id="nav">
+    <button data-view="match">Match</button>
+    <button data-view="pit">Pit</button>
+    <button data-view="data">Data</button>
+    <button data-view="drive">Drive Team</button>
+    <button data-view="guide">Field Guide</button>
+    <button data-view="sync">Sync &amp; Settings</button>
+  </nav>
+</header>
+
+<main>
+  <section class="view" id="view-match"><form data-model="match" id="matchForm" onsubmit="return false"></form></section>
+  <section class="view" id="view-pit"><form data-model="pit" id="pitForm" onsubmit="return false"></form></section>
+
+  <section class="view" id="view-data">
+    <div class="row" style="margin-bottom:10px">
+      <div class="seg" id="dataMode">
+        <button data-mode="teams">Team summary</button><button data-mode="matches">Every match</button><button data-mode="pits">Pit data</button>
+      </div>
+      <input type="text" id="dataFilter" placeholder="Filter by team #…" inputmode="numeric" style="max-width:200px">
+    </div>
+    <p class="hint">Tap a column to sort. Tap a row for the written notes.</p>
+    <div class="tablewrap"><table id="dataTable"></table></div>
+  </section>
+
+  <section class="view" id="view-drive">
+    <div class="card">
+      <h2>Next match lineup</h2>
+      <div class="grid">
+        <div class="field"><label>Red alliance teams</label><div class="row" id="dtRed"></div></div>
+        <div class="field"><label>Blue alliance teams</label><div class="row" id="dtBlue"></div></div>
+      </div>
+      <p class="hint">Type team numbers to see plain-English summaries for the drive team. Everything here comes from data on this device, so sync first.</p>
+    </div>
+    <div class="dtgrid" id="dtCards"></div>
+  </section>
+
+  <section class="view" id="view-guide"></section>
+
+  <section class="view" id="view-sync">
+    <div class="card">
+      <h2>Move data between devices (no wifi needed)</h2>
+      <p class="muted" style="margin-top:0">Pick any method. Importing merges by entry ID, so importing the same data twice won't create duplicates.</p>
+      <div class="row">
+        <button class="btn primary" id="btnQRAll">Show QR codes</button>
+        <button class="btn" id="btnScan">Scan QR codes (camera)</button>
+      </div>
+      <p class="hint">QR: each scout shows their codes and the lead scout's laptop or tablet scans them. Doesn't need internet or Bluetooth.</p>
+      <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+      <div class="row">
+        <button class="btn primary" id="btnAirDrop">AirDrop / Share</button>
+        <button class="btn" id="btnExportJSON">Export file (.json)</button>
+        <label class="btn" style="display:inline-flex;align-items:center">Import files…<input type="file" id="importFile" accept=".json,application/json,text/plain" multiple hidden></label>
+        <button class="btn" id="btnExportCSV">Match CSV (spreadsheet)</button>
+        <button class="btn" id="btnExportPitCSV">Pit CSV</button>
+      </div>
+      <p class="hint">AirDrop / Share opens the share sheet with all data on this device as a .json file. Pick AirDrop, then on the lead device tap <b>Import files…</b> and choose it. No share sheet here? It saves the file instead; move it by USB stick or Nearby Share.</p>
+      <details style="margin-top:10px"><summary class="muted">Paste data instead</summary>
+        <textarea id="pasteBox" rows="4" placeholder="Paste exported JSON or scanned QR text here"></textarea>
+        <button class="btn small" id="btnPaste" style="margin-top:6px">Import pasted data</button>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="grid">
+        <div class="field"><label>Your name (scouter)</label><input type="text" data-setting="scouter"></div>
+        <div class="field"><label>Event name/code</label><input type="text" data-setting="event" placeholder="e.g. 2026miket"></div>
+        <div class="field"><label>Our team #</label><input type="text" inputmode="numeric" data-setting="ourTeam"></div>
+        <div class="field"><label>After saving a match</label>
+          <label class="row" style="color:var(--text)"><input type="checkbox" data-setting="qrAfterSave" style="width:22px;height:22px"> Show its QR code right away</label></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Danger zone</h2>
+      <p class="muted" style="margin-top:0">Export a backup first. Data lives only in this browser on this device.</p>
+      <button class="btn danger" id="btnWipe">Delete all data on this device</button>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg"><div id="dlgBody"></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="dlgClose">Close</button></div></dialog>
+<div id="toast"></div>
+
+<script src="lib/qrcode.min.js"></script>
+<script src="lib/jsQR.min.js"></script>
+<script>
+'use strict';
+/* ================= storage ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const K = { matches: 'frcs.matches', pits: 'frcs.pits', settings: 'frcs.settings', draft: 'frcs.draft', pitDraft: 'frcs.pitDraft', ui: 'frcs.ui' };
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast('⚠ Could not save. Storage is full or blocked. Export your data!'); return false; } }
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
+const setP = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k] ??= {}, o)[last] = v; };
+const parseVal = s => s === 'true' ? true : s === 'false' ? false : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
+
+let settings = Object.assign({ scouter: '', event: '', ourTeam: '', qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
+let matches = LS.get(K.matches, []);
+let pits = LS.get(K.pits, []);
+const ui = Object.assign({ view: 'match', dataMode: 'teams', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
+const saveSettings = () => LS.set(K.settings, settings);
+const saveUI = () => LS.set(K.ui, ui);
+
+/* ================= data model =================
+   Taken from the whiteboard sheet. Change labels/options here. */
+function blankMatch() {
+  return {
+    kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
+    match: '', team: '', alliance: '', station: '',
+    auto: { collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
+    tele: { collected: null, acc: null, scored: null, beached: null, recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
+    end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
+    extra: { penalties: 0, penKinds: [], penNotes: '', breakdown: null, comeback: null, brkNotes: '', problems: [], probNotes: '', driver: null, strategy: '', overall: '' }
+  };
+}
+function blankPit() {
+  return {
+    kind: 'pit', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event, team: '',
+    drive: null, intake: null, capacity: 0, scoring: '', autos: '', climbMax: null, canGetDown: null,
+    beachRisk: null, strengths: '', problems: [], probNotes: '', strategy: '', notes: ''
+  };
+}
+// fill in any keys missing from older saved drafts/entries
+function upgrade(obj, blank) {
+  for (const k in blank) {
+    if (!(k in obj)) obj[k] = clone(blank[k]);
+    else if (blank[k] && typeof blank[k] === 'object' && !Array.isArray(blank[k]) && obj[k] && typeof obj[k] === 'object') upgrade(obj[k], blank[k]);
+  }
+  return obj;
+}
+// balls collected/scored used to be counts; now they're yes/no. Any count
+// above 0 means yes.
+function ballsYN(m) {
+  for (const k of ['auto.collected', 'auto.scored', 'tele.collected', 'tele.scored']) {
+    const v = getP(m, k);
+    if (typeof v === 'number') setP(m, k, v > 0);
+  }
+  return m;
+}
+matches.forEach(m => ballsYN(upgrade(m, blankMatch())));
+pits.forEach(p => upgrade(p, blankPit()));
+let cur = ballsYN(upgrade(LS.get(K.draft, null) || blankMatch(), blankMatch()));
+let curPit = upgrade(LS.get(K.pitDraft, null) || blankPit(), blankPit());
+const model = n => n === 'match' ? cur : curPit;
+const persistDraft = n => n === 'match' ? LS.set(K.draft, cur) : LS.set(K.pitDraft, curPit);
+
+const YN = [['true', 'Yes'], ['false', 'No']];
+const ACC = [['0', '~0%'], ['25', '~25%'], ['50', '~50%'], ['75', '~75%'], ['100', '~100%']];
+const ZONES = ['Depot', 'Center', 'Ladder', 'Alliance Zone', 'Transition'];
+const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinning', 'Contact in protected zone', 'Too many game pieces', 'Over extension', 'Other'];
+const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
+const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
+
+/* ================= field map =================
+   Schematic only. Edit the rectangles to match this season's field. */
+const FIELD = {
+  w: 820, h: 400,
+  // first match wins, so put small zones before big ones
+  zones: [
+    { name: 'Depot', x: 10, y: 300, w: 95, h: 90, fill: '#b5473a', label: 'Red Depot' },
+    { name: 'Ladder', x: 10, y: 150, w: 60, h: 100, fill: '#8f2f2f', label: 'Red Ladder' },
+    { name: 'Depot', x: 715, y: 10, w: 95, h: 90, fill: '#3a64b5', label: 'Blue Depot' },
+    { name: 'Ladder', x: 750, y: 150, w: 60, h: 100, fill: '#2f4f8f', label: 'Blue Ladder' },
+    { name: 'Alliance Zone', x: 10, y: 10, w: 170, h: 380, fill: '#5a2424', label: 'Red Alliance Zone' },
+    { name: 'Alliance Zone', x: 640, y: 10, w: 170, h: 380, fill: '#1f3560', label: 'Blue Alliance Zone' },
+    { name: 'Transition', x: 180, y: 10, w: 80, h: 380, fill: '#2b3a2d', label: 'Transition' },
+    { name: 'Transition', x: 560, y: 10, w: 80, h: 380, fill: '#2b3a2d', label: 'Transition' },
+    { name: 'Center', x: 260, y: 10, w: 300, h: 380, fill: '#33503a', label: 'Center' }
+  ]
+};
+function fieldSVG(id) {
+  const z = FIELD.zones.slice().reverse().map(r =>
+    `<rect class="zone" x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${r.fill}" rx="4"/>`).join('');
+  const labels = FIELD.zones.map(r => {
+    const big = r.w > 150;
+    const cy = r.name === 'Alliance Zone' ? 40 : r.name === 'Transition' ? 205 : r.y + r.h / 2 + 5;
+    if (r.name === 'Transition') return `<text class="small" x="${r.x + r.w / 2}" y="${cy}" transform="rotate(-90 ${r.x + r.w / 2} ${cy})">${r.label}</text>`;
+    if (r.name === 'Ladder') return `<text class="small" x="${r.x + r.w / 2}" y="${cy}" transform="rotate(-90 ${r.x + r.w / 2} ${cy})">${r.label}</text>`;
+    return `<text class="${big ? '' : 'small'}" x="${r.x + r.w / 2}" y="${cy}">${r.label}</text>`;
+  }).join('');
+  return `<svg class="map" id="${id}" viewBox="0 0 ${FIELD.w} ${FIELD.h}" role="img" aria-label="Field map">
+    <rect x="2" y="2" width="${FIELD.w - 4}" height="${FIELD.h - 4}" fill="none" stroke="#fff" stroke-width="3" rx="8"/>
+    ${z}<line x1="410" y1="10" x2="410" y2="390" stroke="#ffffff66" stroke-dasharray="8 6"/>${labels}<g class="dots"></g></svg>`;
+}
+const zoneAt = (x, y) => (FIELD.zones.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) || {}).name;
+
+/* ================= form builders ================= */
+const counter = (k, label, steps = [1], hint = '') => `<div class="field"><label>${label}${hint ? ` <small>${hint}</small>` : ''}</label><div class="counter" data-k="${k}">
+  <button type="button" class="minus" data-d="-1" aria-label="minus one">−</button><output class="val">0</output>${steps.map(s => `<button type="button" data-d="${s}">+${s}</button>`).join('')}</div></div>`;
+const seg = (k, label, opts, cls = '', hint = '') => `<div class="field"><label>${label}${hint ? ` <small>${hint}</small>` : ''}</label><div class="seg ${cls}" data-k="${k}">${opts.map(([v, l]) => `<button type="button" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+const chips = (k, label, opts) => `<div class="field wide"><label>${label}</label><div class="chips" data-k="${k}">${opts.map(o => `<button type="button" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`;
+const text = (k, label, ph = '', rows = 2) => `<div class="field wide"><label>${label}</label><textarea data-k="${k}" rows="${rows}" placeholder="${esc(ph)}"></textarea></div>`;
+const input = (k, label, ph = '', numeric = false) => `<div class="field"><label>${label}</label><input type="text" data-k="${k}" placeholder="${esc(ph)}" ${numeric ? 'inputmode="numeric" pattern="[0-9]*"' : ''} autocomplete="off"></div>`;
+const showIf = (k, html) => `<div class="grid" data-show="${k}" style="grid-column:1/-1">${html}</div>`;
+
+$('#matchForm').innerHTML = `
+<div class="card"><h2>Match info</h2><div class="grid">
+  ${input('team', 'Team #', 'e.g. 254', true)}${input('match', 'Match #', 'e.g. 12', true)}
+  ${seg('alliance', 'Alliance', [['R', 'Red'], ['B', 'Blue']], 'alliance')}${seg('station', 'Driver station', [['1', '1'], ['2', '2'], ['3', '3']])}
+  ${input('scouter', 'Scouter')}${input('event', 'Event')}
+</div><p class="hint" id="editBanner" hidden>✏ Editing a saved entry. Saving will overwrite it.</p></div>
+
+<div class="card sec-auto"><h2><span class="tag">AUTO</span> First 15–20 seconds</h2><div class="grid">
+  ${seg('auto.collected', 'Balls collected?', YN)}
+  ${counter('auto.cycles', 'Cycles', [1], 'collect → score = 1')}
+  ${seg('auto.acc', 'Scoring accuracy', ACC)}
+  ${seg('auto.scored', 'Balls scored?', YN)}
+  ${seg('auto.hang', 'Hang in auto?', YN)}
+  ${seg('auto.down', 'Got back down?', YN)}
+  ${text('auto.notes', 'Auto notes', 'Path, where it started, what went right or wrong…')}
+</div></div>
+
+<div class="card sec-tele"><h2><span class="tag">TELEOP</span> Driver control</h2><div class="grid">
+  ${seg('tele.collected', 'Balls collected?', YN)}
+  ${seg('tele.scored', 'Balls scored?', YN)}
+  ${seg('tele.acc', 'Scoring accuracy', ACC)}
+  ${seg('tele.beached', 'Got beached / stuck?', YN)}
+  ${showIf('tele.beached', seg('tele.recovered', 'Recovered?', YN))}
+  ${seg('tele.defense', 'Played defense?', YN)}
+  ${showIf('tele.defense', `${chips('tele.defZones', 'Where? Tap zones or tap the map', ZONES)}
+    <div class="field wide">${fieldSVG('defMap')}
+    <div class="row" style="margin-top:6px"><button type="button" class="btn small" id="dotUndo">Undo dot</button><button type="button" class="btn small" id="dotClear">Clear dots</button><span class="hint" style="margin:0">Tap where they defended. The zone gets picked for you.</span></div></div>`)}
+  ${text('tele.notes', 'Teleop notes', 'How fast are cycles? Where do they shoot from? Does defense slow them down?')}
+</div></div>
+
+<div class="card sec-end"><h2><span class="tag">ENDGAME</span> Last 30 seconds</h2><div class="grid">
+  ${counter('end.cycles', 'Cycles', [1])}
+  ${seg('end.acc', 'Scoring accuracy', ACC)}
+  ${seg('end.climb', 'Climb', CLIMB)}
+  ${seg('end.rung', 'Rung #', [['1', '1'], ['2', '2'], ['3', '3']])}
+  ${text('end.notes', 'Endgame notes', 'How long did the climb take? Did they need help? Did they fall?')}
+</div></div>
+
+<div class="card sec-extra"><h2><span class="tag">EXTRA</span> Penalties, reliability, strategy</h2><div class="grid">
+  ${counter('extra.penalties', 'Penalties', [1])}
+  ${seg('extra.driver', 'Driver skill', [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']], '', '1 = poor, 5 = great')}
+  ${chips('extra.penKinds', 'What kind of penalty?', PEN_KINDS)}
+  ${text('extra.penNotes', 'Penalty details', 'What happened?', 1)}
+  ${seg('extra.breakdown', 'Broke down?', YN)}
+  ${showIf('extra.breakdown', seg('extra.comeback', 'Came back / recovered?', YN) + text('extra.brkNotes', 'What broke?', 'Arm stopped moving, lost comms for 20s then came back…', 1))}
+  ${chips('extra.problems', 'Common problems', PROBLEMS)}
+  ${text('extra.probNotes', 'Problems (in your own words)', 'Anything that went wrong for this robot')}
+  ${text('extra.strategy', 'Strategy: how should we play with or against them?', 'e.g. Good partner for us: fast scorer, weak climber. Block them at the depot.')}
+  ${text('extra.overall', 'Overall match summary', 'Two or three sentences a drive coach can read in 10 seconds', 3)}
+</div></div>
+<div class="savebar"><button type="button" class="btn primary" id="btnSaveMatch">Save match</button><button type="button" class="btn" id="btnResetMatch">Reset</button></div>`;
+
+$('#pitForm').innerHTML = `
+<div class="card"><h2>Pit scouting</h2><div class="grid">
+  ${input('team', 'Team #', 'e.g. 254', true)}${input('scouter', 'Scouter')}
+  ${seg('drive', 'Drivetrain', [['Swerve', 'Swerve'], ['Tank', 'Tank'], ['Mecanum', 'Mecanum'], ['Other', 'Other']])}
+  ${seg('intake', 'Collects balls from', [['Ground', 'Ground'], ['Depot', 'Depot'], ['Both', 'Both'], ['None', 'None']])}
+  ${counter('capacity', 'Balls it can hold', [1, 5])}
+  ${seg('climbMax', 'Highest rung', [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3']])}
+  ${seg('canGetDown', 'Can get back down?', YN)}
+  ${seg('beachRisk', 'Gets beached / stuck often?', YN)}
+  ${text('scoring', 'How do they score?', 'Shooter type, range, where they shoot from')}
+  ${text('autos', 'Autos they have', 'Start positions, how many balls, does it hang?')}
+  ${text('strengths', 'Strengths', 'What are they proud of?')}
+  ${chips('problems', 'Known problems', PROBLEMS)}
+  ${text('probNotes', 'Problems in their words', 'What do they struggle with or keep fixing?')}
+  ${text('strategy', 'Strategy notes', 'What role would they play on an alliance?')}
+  ${text('notes', 'Other notes')}
+</div></div>
+<div class="savebar"><button type="button" class="btn primary" id="btnSavePit">Save pit entry</button><button type="button" class="btn" id="btnResetPit">Reset</button></div>
+<div class="card"><h2>Pit entries on this device</h2><div id="pitList" class="row"></div></div>`;
+
+/* ================= form behaviour ================= */
+function renderForm(form) {
+  const m = model(form.dataset.model);
+  $$('[data-k]', form).forEach(el => {
+    const v = getP(m, el.dataset.k);
+    if (el.classList.contains('counter')) el.querySelector('.val').textContent = v || 0;
+    else if (el.classList.contains('seg')) $$('button', el).forEach(b => b.classList.toggle('on', parseVal(b.dataset.v) === v));
+    else if (el.classList.contains('chips')) $$('button', el).forEach(b => b.classList.toggle('on', (v || []).includes(b.dataset.v)));
+    else if (document.activeElement !== el) el.value = v ?? '';
+  });
+  $$('[data-show]', form).forEach(el => el.hidden = getP(m, el.dataset.show) !== true);
+  if (form.dataset.model === 'match') {
+    drawDots();
+    $('#editBanner').hidden = !(cur.id && matches.some(x => x.id === cur.id));
+  } else renderPitList();
+}
+document.addEventListener('click', e => {
+  const btn = e.target.closest('button'); if (!btn) return;
+  const form = btn.closest('[data-model]'), ctl = btn.closest('[data-k]');
+  if (!form || !ctl) return;
+  const name = form.dataset.model, m = model(name), k = ctl.dataset.k;
+  if (ctl.classList.contains('counter')) setP(m, k, Math.max(0, (+getP(m, k) || 0) + Number(btn.dataset.d)));
+  else if (ctl.classList.contains('seg')) { const v = parseVal(btn.dataset.v); setP(m, k, getP(m, k) === v ? null : v); }
+  else if (ctl.classList.contains('chips')) { const a = getP(m, k) || [], i = a.indexOf(btn.dataset.v); i < 0 ? a.push(btn.dataset.v) : a.splice(i, 1); setP(m, k, a); }
+  else return;
+  // small conveniences
+  if (name === 'match') {
+    if (k === 'end.rung' && getP(m, k) != null && m.end.climb == null) m.end.climb = 'ok';
+    if (k === 'extra.penKinds' && m.extra.penKinds.length > m.extra.penalties) m.extra.penalties = m.extra.penKinds.length;
+    if (k === 'tele.defZones' && m.tele.defZones.length) m.tele.defense = true;
+  }
+  persistDraft(name); renderForm(form);
+});
+document.addEventListener('input', e => {
+  const el = e.target, form = el.closest('[data-model]');
+  if (form && el.dataset.k) { setP(model(form.dataset.model), el.dataset.k, el.value.trim() === '' ? '' : el.value); persistDraft(form.dataset.model); }
+  if (el.dataset.setting) { settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings(); }
+});
+
+// defense map
+function drawDots() {
+  const g = $('#defMap .dots'); if (!g) return;
+  g.innerHTML = cur.tele.defDots.map(([x, y]) => `<circle class="dot" cx="${x}" cy="${y}" r="10"/>`).join('');
+}
+$('#defMap').addEventListener('click', e => {
+  const svg = e.currentTarget, pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const x = Math.round(p.x), y = Math.round(p.y);
+  cur.tele.defDots.push([x, y]);
+  const z = zoneAt(x, y);
+  if (z && !cur.tele.defZones.includes(z)) cur.tele.defZones.push(z);
+  cur.tele.defense = true;
+  persistDraft('match'); renderForm($('#matchForm'));
+});
+$('#dotUndo').onclick = () => { cur.tele.defDots.pop(); persistDraft('match'); drawDots(); };
+$('#dotClear').onclick = () => { cur.tele.defDots = []; persistDraft('match'); drawDots(); };
+
+function upsert(list, entry) { const i = list.findIndex(x => x.id === entry.id); i >= 0 ? list[i] = entry : list.push(entry); }
+const cleanTeam = t => String(t ?? '').replace(/\D/g, '');
+
+$('#btnSaveMatch').onclick = () => {
+  cur.team = cleanTeam(cur.team); cur.match = cleanTeam(cur.match);
+  if (!cur.team) return toast('Enter a team number');
+  if (!cur.match) return toast('Enter a match number');
+  if (!cur.scouter) return toast('Enter your name (scouter)');
+  cur.ts = Date.now(); cur.id ||= uid();
+  const saved = clone(cur);
+  upsert(matches, saved);
+  if (!LS.set(K.matches, matches)) return;
+  settings.scouter = cur.scouter; settings.event = cur.event; saveSettings();
+  const next = blankMatch();
+  next.match = String(+saved.match + 1); next.alliance = saved.alliance; next.station = saved.station;
+  cur = next; persistDraft('match'); renderForm($('#matchForm')); updateCount();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`Saved team ${saved.team}, match ${saved.match}`);
+  if (settings.qrAfterSave) showQR([saved], 0);
+};
+$('#btnResetMatch').onclick = () => {
+  if (!confirm('Clear this form?')) return;
+  const keep = { match: cur.match, alliance: cur.alliance, station: cur.station };
+  cur = Object.assign(blankMatch(), cur.id && matches.some(x => x.id === cur.id) ? {} : keep);
+  persistDraft('match'); renderForm($('#matchForm'));
+};
+$('#btnSavePit').onclick = () => {
+  curPit.team = cleanTeam(curPit.team);
+  if (!curPit.team) return toast('Enter a team number');
+  // one pit entry per team: reuse its id so a re-scout updates it
+  const existing = pits.find(p => p.team === curPit.team);
+  curPit.id = curPit.id || (existing && existing.id) || uid();
+  curPit.ts = Date.now();
+  const saved = clone(curPit);
+  pits = pits.filter(p => p.team !== saved.team || p.id === saved.id);
+  upsert(pits, saved);
+  if (!LS.set(K.pits, pits)) return;
+  if (curPit.scouter) { settings.scouter = curPit.scouter; saveSettings(); }
+  curPit = blankPit(); persistDraft('pit'); renderForm($('#pitForm')); updateCount();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`Saved pit entry for ${saved.team}`);
+};
+$('#btnResetPit').onclick = () => { if (!confirm('Clear this form?')) return; curPit = blankPit(); persistDraft('pit'); renderForm($('#pitForm')); };
+function renderPitList() {
+  const el = $('#pitList'); if (!el) return;
+  el.innerHTML = pits.length ? pits.slice().sort((a, b) => a.team - b.team).map(p => `<button type="button" class="btn small" data-pit="${esc(p.id)}">${esc(p.team)}</button>`).join('') : '<span class="muted">None yet</span>';
+}
+$('#pitList').addEventListener('click', e => {
+  const b = e.target.closest('[data-pit]'); if (!b) return;
+  curPit = upgrade(clone(pits.find(p => p.id === b.dataset.pit)), blankPit());
+  persistDraft('pit'); renderForm($('#pitForm')); window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`Editing pit entry for ${curPit.team}`);
+});
+
+/* ================= analysis ================= */
+const avg = arr => { const a = arr.filter(v => v !== null && v !== '' && v !== undefined).map(Number); return a.length ? a.reduce((s, v) => s + v, 0) / a.length : null; };
+const fmt = (n, d = 1) => n == null ? '—' : String(Math.round(n * 10 ** d) / 10 ** d);
+const pct = n => n == null ? '—' : Math.round(n) + '%';
+const tally = arr => arr.reduce((m, v) => (m[v] = (m[v] || 0) + 1, m), {});
+const topTags = (t, n = 3) => Object.entries(t).sort((a, b) => b[1] - a[1]).slice(0, n);
+
+function teamStats(team) {
+  const ms = matches.filter(m => m.team === team).sort((a, b) => a.match - b.match);
+  const count = f => ms.filter(f).length;
+  const climbs = ms.filter(m => m.end.climb === 'ok');
+  return {
+    team, n: ms.length, ms, pit: pits.find(p => p.team === team),
+    // matches where they did it
+    autoCol: count(m => m.auto.collected === true), autoScr: count(m => m.auto.scored === true),
+    teleCol: count(m => m.tele.collected === true), teleScr: count(m => m.tele.scored === true),
+    autoAcc: avg(ms.map(m => m.auto.acc)), autoCyc: avg(ms.map(m => m.auto.cycles)),
+    teleAcc: avg(ms.map(m => m.tele.acc)),
+    endCyc: avg(ms.map(m => m.end.cycles)),
+    autoHang: count(m => m.auto.hang === true),
+    climbOk: climbs.length, climbTry: count(m => m.end.climb === 'ok' || m.end.climb === 'fail'),
+    bestRung: climbs.reduce((b, m) => Math.max(b, +m.end.rung || 0), 0),
+    usualRung: topTags(tally(climbs.map(m => m.end.rung).filter(Boolean)), 1)[0]?.[0],
+    def: count(m => m.tele.defense === true), defZones: tally(ms.flatMap(m => m.tele.defZones)),
+    beached: count(m => m.tele.beached === true), recovered: count(m => m.tele.beached === true && m.tele.recovered === true),
+    broke: count(m => m.extra.breakdown === true), comeback: count(m => m.extra.breakdown === true && m.extra.comeback === true),
+    pen: ms.reduce((s, m) => s + (+m.extra.penalties || 0), 0), penKinds: tally(ms.flatMap(m => m.extra.penKinds)),
+    problems: tally(ms.flatMap(m => m.extra.problems)), driver: avg(ms.map(m => m.extra.driver))
+  };
+}
+const allTeams = () => [...new Set([...matches.map(m => m.team), ...pits.map(p => p.team)])].filter(Boolean);
+
+// plain-English sentences, so the drive team doesn't have to read numbers
+function blurb(s) {
+  const out = [];
+  if (!s.n) { out.push('No match data yet.'); }
+  else {
+    out.push(`Scored balls in teleop in <b>${s.teleScr} of ${s.n}</b> matches, in auto in ${s.autoScr} of ${s.n}. Teleop accuracy is about ${pct(s.teleAcc)}.`);
+    out.push(`Collected balls in teleop in ${s.teleCol} of ${s.n}, in auto in ${s.autoCol} of ${s.n}.`);
+    if (s.climbTry) out.push(`Climbed in <b>${s.climbOk} of ${s.n}</b> matches${s.usualRung ? `, usually rung ${s.usualRung}` : ''}${s.climbTry > s.climbOk ? ` (failed ${s.climbTry - s.climbOk}×)` : ''}.`);
+    else out.push('Has not tried a climb.');
+    if (s.autoHang) out.push(`Hangs in auto (${s.autoHang}/${s.n}).`);
+    if (s.def) out.push(`Played defense in ${s.def}/${s.n}${Object.keys(s.defZones).length ? `, mostly ${topTags(s.defZones, 2).map(x => x[0]).join(' and ')}` : ''}.`);
+    if (s.beached) out.push(`<span class="flag">Got beached ${s.beached}×</span>${s.recovered ? ` (got free ${s.recovered}×)` : ', never got free'}.`);
+    if (s.broke) out.push(`<span class="flag">Broke down ${s.broke}×</span>${s.comeback ? ` (came back ${s.comeback}×)` : ''}.`);
+    if (!s.broke && !s.beached && s.n >= 2) out.push('<span class="good">Reliable so far.</span>');
+    if (s.pen) out.push(`${s.pen} penalties${Object.keys(s.penKinds).length ? `: ${topTags(s.penKinds).map(([k, v]) => `${k} ×${v}`).join(', ')}` : ''}.`);
+    const probs = topTags(s.problems);
+    if (probs.length) out.push(`Common problems: ${probs.map(([k, v]) => `${k} (${v})`).join(', ')}.`);
+  }
+  return out;
+}
+
+/* ================= data view ================= */
+const climbLabel = m => m.end.climb === 'ok' ? `✓ R${m.end.rung ?? '?'}` : m.end.climb === 'fail' ? '✗ fail' : '—';
+const yn = v => v === true ? 'Y' : v === false ? 'N' : '—';
+// "3/5": matches they did it in, out of matches scouted; sorts by the share
+const outOf = k => [s => s.n ? s[k] / s.n : null, (v, s) => s.n ? `${s[k]}/${s.n}` : '—'];
+const TABLES = {
+  teams: {
+    rows: () => allTeams().map(teamStats),
+    cols: [
+      ['Team', s => +s.team], ['Matches', s => s.n], ['Tele scores', ...outOf('teleScr')], ['Tele collects', ...outOf('teleCol')], ['Auto scores', ...outOf('autoScr')], ['Auto collects', ...outOf('autoCol')],
+      ['Tele %', s => s.teleAcc, pct], ['Climbs', s => s.n ? s.climbOk / s.n : null, (v, s) => s.n ? `${s.climbOk}/${s.n}` : '—'], ['Best rung', s => s.bestRung || null, v => v ?? '—'],
+      ['Defense', s => s.n ? s.def / s.n : null, (v, s) => s.n ? `${s.def}/${s.n}` : '—'], ['Beached', s => s.beached], ['Broke', s => s.broke], ['Pen.', s => s.pen], ['Driver', s => s.driver, fmt]
+    ],
+    open: s => openTeam(s.team)
+  },
+  matches: {
+    rows: () => matches,
+    cols: [
+      ['Match', m => +m.match], ['Team', m => +m.team], ['Alliance', m => m.alliance + m.station, (v, m) => m.alliance ? `<span class="${m.alliance === 'R' ? 'r' : 'b'}">${m.alliance}${m.station}</span>` : '—'],
+      ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
+      ['Tele col', m => m.tele.collected, yn], ['Tele scr', m => m.tele.scored, yn], ['Tele %', m => m.tele.acc, pct],
+      ['End cyc', m => m.end.cycles], ['Climb', m => m.end.climb === 'ok' ? 10 + (+m.end.rung || 0) : m.end.climb === 'fail' ? 1 : 0, (v, m) => climbLabel(m)],
+      ['Defense', m => m.tele.defense, yn], ['Beached', m => m.tele.beached, yn], ['Broke', m => m.extra.breakdown, yn], ['Pen.', m => m.extra.penalties],
+      ['Scouter', m => m.scouter]
+    ],
+    open: m => openMatch(m.id)
+  },
+  pits: {
+    rows: () => pits,
+    cols: [['Team', p => +p.team], ['Drive', p => p.drive], ['Intake', p => p.intake], ['Holds', p => p.capacity], ['Rung', p => p.climbMax], ['Gets down', p => p.canGetDown, yn], ['Beach risk', p => p.beachRisk, yn], ['Scouter', p => p.scouter]],
+    open: p => openTeam(p.team)
+  }
+};
+let tableRows = [];
+function renderData() {
+  const mode = ui.dataMode, T = TABLES[mode], [sk, sd] = ui.sort[mode];
+  $$('#dataMode button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  const f = cleanTeam($('#dataFilter').value);
+  const col = T.cols.find(c => c[0] === sk) || T.cols[0];
+  tableRows = T.rows().filter(r => !f || String(r.team).startsWith(f)).sort((a, b) => {
+    const x = col[1](a), y = col[1](b);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * sd;
+  });
+  const head = `<thead><tr>${T.cols.map(c => `<th data-col="${esc(c[0])}" class="${c[0] === col[0] ? 'sorted' : ''}">${esc(c[0])}${c[0] === col[0] ? (sd > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>`;
+  const body = tableRows.length ? tableRows.map((r, i) => `<tr data-i="${i}">${T.cols.map(c => { const v = c[1](r); return `<td>${c[2] ? c[2](v, r) : esc(v ?? '—')}</td>`; }).join('')}</tr>`).join('')
+    : `<tr><td colspan="${T.cols.length}" class="muted">No data yet. Scout a match or import data.</td></tr>`;
+  $('#dataTable').innerHTML = head + `<tbody>${body}</tbody>`;
+}
+$('#dataMode').onclick = e => { const b = e.target.closest('[data-mode]'); if (b) { ui.dataMode = b.dataset.mode; saveUI(); renderData(); } };
+$('#dataFilter').oninput = renderData;
+$('#dataTable').onclick = e => {
+  const th = e.target.closest('th');
+  if (th) { const s = ui.sort[ui.dataMode]; s[1] = s[0] === th.dataset.col ? -s[1] : (th.dataset.col === 'Team' || th.dataset.col === 'Match' ? 1 : -1); s[0] = th.dataset.col; saveUI(); return renderData(); }
+  const tr = e.target.closest('tr[data-i]'); if (tr) TABLES[ui.dataMode].open(tableRows[+tr.dataset.i]);
+};
+
+function noteLines(m) {
+  return [['Auto', m.auto.notes], ['Teleop', m.tele.notes], ['Endgame', m.end.notes], ['Penalty', m.extra.penNotes], ['Breakdown', m.extra.brkNotes], ['Problems', m.extra.probNotes], ['Strategy', m.extra.strategy], ['Summary', m.extra.overall]]
+    .filter(x => x[1] && x[1].trim()).map(([k, v]) => `<div class="quote"><b>${k}:</b> ${esc(v)}</div>`).join('');
+}
+function pitBlock(p) {
+  if (!p) return '<p class="muted">No pit scouting yet.</p>';
+  const facts = [p.drive && `${p.drive} drive`, p.intake && `intake: ${p.intake}`, p.capacity && `holds ${p.capacity}`, p.climbMax != null && `climbs to rung ${p.climbMax || 'none'}`, p.canGetDown != null && (p.canGetDown ? 'can get down' : "can't get down")].filter(Boolean).join(' · ');
+  return `<p>${esc(facts)}</p>${[['Scoring', p.scoring], ['Autos', p.autos], ['Strengths', p.strengths], ['Problems', [p.problems.join(', '), p.probNotes].filter(Boolean).join(': ')], ['Strategy', p.strategy], ['Notes', p.notes]]
+    .filter(x => x[1]).map(([k, v]) => `<div class="quote"><b>${k}:</b> ${esc(v)}</div>`).join('')}`;
+}
+function openTeam(team) {
+  const s = teamStats(team);
+  openDialog(`<h2 style="margin-top:0">Team ${esc(team)}</h2>
+    <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
+    <h3>Pit scouting</h3>${pitBlock(s.pit)}
+    <h3>Match notes</h3>${s.ms.length ? s.ms.slice().reverse().map(m => `<div style="margin:10px 0"><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span>${noteLines(m) || '<div class="muted">No written notes.</div>'}</div>`).join('') : '<p class="muted">None.</p>'}`);
+}
+function openMatch(id) {
+  const m = matches.find(x => x.id === id); if (!m) return;
+  openDialog(`<h2 style="margin-top:0">Team ${esc(m.team)} · Match ${esc(m.match)}</h2>
+    <p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
+    <p><b>Auto:</b> collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
+    <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
+    <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
+    <b>Extra:</b> ${m.extra.penalties} penalties${m.extra.penKinds.length ? ' (' + esc(m.extra.penKinds.join(', ')) + ')' : ''}, broke down ${yn(m.extra.breakdown)}, driver ${m.extra.driver ?? '—'}/5${m.extra.problems.length ? '<br><b>Problems:</b> ' + esc(m.extra.problems.join(', ')) : ''}</p>
+    ${noteLines(m)}
+    <div class="row" style="margin-top:12px"><button class="btn small" id="mEdit">Edit</button><button class="btn small" id="mQR">QR code</button><button class="btn small" id="mTeam">Team ${esc(m.team)} summary</button><button class="btn small danger" id="mDel">Delete</button></div>`);
+  $('#mEdit').onclick = () => { cur = upgrade(clone(m), blankMatch()); persistDraft('match'); renderForm($('#matchForm')); closeDialog(); show('match'); window.scrollTo(0, 0); };
+  $('#mQR').onclick = () => showQR([m], 0);
+  $('#mTeam').onclick = () => openTeam(m.team);
+  $('#mDel').onclick = () => { if (!confirm(`Delete team ${m.team} match ${m.match}?`)) return; matches = matches.filter(x => x.id !== m.id); LS.set(K.matches, matches); closeDialog(); renderData(); updateCount(); };
+}
+
+/* ================= drive team view ================= */
+function renderDriveInputs() {
+  const mk = i => `<input type="text" inputmode="numeric" data-lineup="${i}" value="${esc(settings.lineup[i])}" placeholder="Team" style="width:90px">`;
+  $('#dtRed').innerHTML = [0, 1, 2].map(mk).join('');
+  $('#dtBlue').innerHTML = [3, 4, 5].map(mk).join('');
+}
+function renderDrive() {
+  $('#dtCards').innerHTML = settings.lineup.map((t, i) => {
+    t = cleanTeam(t); if (!t) return '';
+    const s = teamStats(t), side = i < 3 ? 'R' : 'B';
+    const strat = s.ms.map(m => m.extra.strategy).filter(Boolean).slice(-2);
+    const pitStrat = s.pit && s.pit.strategy;
+    return `<div class="tcard ${side}"><h3>${esc(t)}${t === settings.ourTeam ? ' <span class="muted" style="font-size:14px">(us)</span>' : ''}</h3>
+      <div class="stats"><span class="stat">Scores <b>${s.n ? s.teleScr + '/' + s.n : '—'}</b></span><span class="stat">Tele <b>${pct(s.teleAcc)}</b></span><span class="stat">Climb <b>${s.n ? s.climbOk + '/' + s.n : '—'}</b></span><span class="stat">Best rung <b>${s.bestRung || '—'}</b></span><span class="stat">${s.n} matches</span></div>
+      <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
+      ${[pitStrat, ...strat].filter(Boolean).map(x => `<div class="quote">${esc(x)}</div>`).join('')}
+      <button class="btn small" data-team="${esc(t)}" style="margin-top:6px">All notes</button></div>`;
+  }).join('') || '<p class="muted">Enter team numbers above.</p>';
+}
+$('#view-drive').addEventListener('input', e => { if (e.target.dataset.lineup != null) { settings.lineup[+e.target.dataset.lineup] = e.target.value; saveSettings(); renderDrive(); } });
+$('#dtCards').onclick = e => { const b = e.target.closest('[data-team]'); if (b) openTeam(b.dataset.team); };
+
+/* ================= field guide ================= */
+$('#view-guide').innerHTML = `
+<div class="card"><h2>Field map</h2>${fieldSVG('guideMap')}
+<p class="hint">This is a simplified drawing, not to scale. To match this season's field, edit <code>FIELD.zones</code> in the file.</p></div>
+<div class="card"><h2>What the words mean</h2><dl class="gloss">
+<dt>Cycle</dt><dd>One trip: pick up balls, then score them. Count one each time they score after collecting.</dd>
+<dt>Accuracy</dt><dd>Out of the balls they shot, about how many went in. A guess is fine: about half = ~50%.</dd>
+<dt>Balls collected / scored</dt><dd>Yes or No: did the robot pick up any balls, and did it get any in? You don't need to count them.</dd>
+<dt>Hang / get down</dt><dd>In auto, did the robot hang on the structure, and did it get back down to keep playing?</dd>
+<dt>Beached</dt><dd>The robot got stuck on something (a bump, a game piece, another robot) and couldn't drive. <b>Recovered</b> = it got free on its own.</dd>
+<dt>Defense</dt><dd>Blocking or pushing the other alliance instead of scoring. Tap the map where it happened.</dd>
+<dt>Depot / Ladder / Center</dt><dd>Field areas. Depot = where balls are stored near each alliance. Ladder = the climbing structure. Center = the middle of the field.</dd>
+<dt>Rung</dt><dd>Which bar they climbed to. 1 is lowest.</dd>
+<dt>Breakdown / comeback</dt><dd>Stopped working during the match (no movement, lost comms, broken arm). Comeback = started working again.</dd>
+<dt>Penalty</dt><dd>Watch for the ref's flag and the score display. Pick the type if you know it; otherwise write what you saw.</dd>
+</dl></div>
+<div class="card"><h2>How to scout a match (beginners)</h2><ol>
+<li>Before the match: enter <b>team #</b>, <b>match #</b>, alliance and station. Watch only <b>your</b> robot.</li>
+<li><b>Auto</b> (first 15 seconds): tap Yes/No for collected and scored, and count cycles as it happens. Write notes after.</li>
+<li><b>Teleop:</b> Yes/No for collected and scored, then a rough accuracy. Notes matter more than numbers.</li>
+<li><b>Endgame:</b> did they climb, and to which rung?</li>
+<li>After the match: fill in problems, strategy and a 2–3 sentence summary. Then <b>Save</b>.</li>
+<li>If wifi is down, use <b>Sync → Show QR codes</b> so the lead scout can scan your data.</li>
+</ol></div>`;
+
+/* ================= sync: QR, files ================= */
+qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+function qrSVG(textData) {
+  const q = qrcode(0, 'L'); q.addData(textData, 'Byte'); q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+}
+// shorter QR payload: leave out empty values
+function compact(o) {
+  if (Array.isArray(o)) return o;
+  const r = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
+    r[k] = v && typeof v === 'object' && !Array.isArray(v) ? compact(v) : v;
+  }
+  return r;
+}
+function showQR(list, i) {
+  if (!list.length) return toast('Nothing to show');
+  i = Math.max(0, Math.min(i, list.length - 1));
+  const e = list[i];
+  let svg;
+  try { svg = qrSVG(JSON.stringify(compact(e))); }
+  catch (err) { svg = '<p style="color:#000;padding:20px">Too much text for one QR code. Use file export for this entry.</p>'; }
+  const title = e.kind === 'pit' ? `Pit · Team ${esc(e.team)}` : `Team ${esc(e.team)} · Match ${esc(e.match)}`;
+  openDialog(`<h2 style="margin:0">${title}</h2><p class="muted" style="margin:4px 0">${i + 1} of ${list.length} · ${esc(e.scouter || '')}</p>
+    <div class="qrbox">${svg}</div>
+    <div class="row" style="justify-content:center"><button class="btn" id="qrPrev" ${i ? '' : 'disabled'}>◀ Prev</button><button class="btn primary" id="qrNext" ${i < list.length - 1 ? '' : 'disabled'}>Next ▶</button></div>`);
+  $('#qrPrev').onclick = () => showQR(list, i - 1);
+  $('#qrNext').onclick = () => showQR(list, i + 1);
+}
+$('#btnQRAll').onclick = () => {
+  const mine = [...matches, ...pits].sort((a, b) => b.ts - a.ts);
+  showQR(mine, 0);
+};
+
+function mergeEntries(list) {
+  let added = 0, updated = 0;
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object' || !raw.id || !raw.team) continue;
+    const isPit = raw.kind === 'pit';
+    const e = upgrade(clone(raw), isPit ? blankPit() : blankMatch());
+    if (!isPit) ballsYN(e);
+    e.team = cleanTeam(e.team);
+    const arr = isPit ? pits : matches, i = arr.findIndex(x => x.id === e.id);
+    if (i < 0) { arr.push(e); added++; } else if ((e.ts || 0) > (arr[i].ts || 0)) { arr[i] = e; updated++; }
+  }
+  LS.set(K.matches, matches); LS.set(K.pits, pits); updateCount(); refreshViews();
+  return { added, updated };
+}
+function importText(txt) {
+  let data;
+  try { data = JSON.parse(txt); } catch (e) { toast('That isn\'t scouting data (bad JSON)'); return null; }
+  const list = Array.isArray(data) ? data : data.matches || data.pits ? [...(data.matches || []), ...(data.pits || [])] : [data];
+  const r = mergeEntries(list);
+  toast(`Imported: ${r.added} new, ${r.updated} updated`);
+  return r;
+}
+function download(name, content, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const stamp = () => new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+const fileTag = () => [settings.event, settings.scouter].filter(Boolean).join('-').replace(/[^\w-]+/g, '_') || 'scouting';
+const exportJSON = () => JSON.stringify({ app: 'frc-scouting', v: 1, exported: Date.now(), matches, pits });
+$('#btnExportJSON').onclick = () => download(`${fileTag()}-${stamp()}.json`, exportJSON(), 'application/json');
+// AirDrop lives in the share sheet on iPhone/iPad/Mac
+$('#btnAirDrop').onclick = async () => {
+  if (!matches.length && !pits.length) return toast('Nothing to send yet');
+  const name = `${fileTag()}-${stamp()}.json`;
+  const file = new File([exportJSON()], name, { type: 'application/json' });
+  if (!navigator.canShare?.({ files: [file] })) { download(name, exportJSON(), 'application/json'); return toast('No share sheet here, so the file was saved instead'); }
+  try { await navigator.share({ files: [file], title: 'Scouting data' }); }
+  catch (err) { if (err.name !== 'AbortError') toast('Could not share: ' + err.message); }
+};
+function flatten(o, p = '', out = {}) {
+  for (const [k, v] of Object.entries(o)) {
+    const key = p ? `${p}.${k}` : k;
+    if (k === 'defDots') out[key] = v.map(d => d.join(':')).join(' ');
+    else if (Array.isArray(v)) out[key] = v.join('; ');
+    else if (v && typeof v === 'object') flatten(v, key, out);
+    else out[key] = v;
+  }
+  return out;
+}
+function toCSV(list, blank) {
+  const cols = Object.keys(flatten(blank));
+  const cell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return [cols.join(','), ...list.map(e => { const f = flatten(e); return cols.map(c => cell(c === 'ts' ? new Date(f.ts).toISOString() : f[c])).join(','); })].join('\r\n');
+}
+$('#btnExportCSV').onclick = () => download(`${fileTag()}-matches-${stamp()}.csv`, toCSV(matches.slice().sort((a, b) => a.match - b.match || a.team - b.team), blankMatch()), 'text/csv');
+$('#btnExportPitCSV').onclick = () => download(`${fileTag()}-pits-${stamp()}.csv`, toCSV(pits, blankPit()), 'text/csv');
+$('#importFile').onchange = async e => { for (const f of e.target.files) importText(await f.text()); e.target.value = ''; };
+$('#btnPaste').onclick = () => { if (importText($('#pasteBox').value)) $('#pasteBox').value = ''; };
+$('#btnWipe').onclick = () => {
+  if (!confirm('Delete ALL match and pit data on this device? This cannot be undone.')) return;
+  if (prompt('Type DELETE to confirm') !== 'DELETE') return;
+  matches = []; pits = []; LS.set(K.matches, matches); LS.set(K.pits, pits); updateCount(); refreshViews(); toast('All data deleted');
+};
+
+// QR scanner
+let scanStream = null;
+$('#btnScan').onclick = async () => {
+  if (!navigator.mediaDevices?.getUserMedia) return toast('No camera access here. Use file import instead.');
+  openDialog(`<h2 style="margin-top:0">Scan QR codes</h2><video id="scanVideo" playsinline muted></video><p id="scanStatus" class="muted">Point the camera at a scout's QR code. Keep scanning; each new code is imported automatically.</p>`, stopScan);
+  try { scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }); }
+  catch (err) { $('#scanStatus').textContent = 'Camera blocked: ' + err.message + '. Allow camera access, or use file import.'; return; }
+  const video = $('#scanVideo'); video.srcObject = scanStream; await video.play();
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const seen = new Set(); let n = 0;
+  const tick = () => {
+    if (!scanStream) return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      const scale = Math.min(1, 800 / video.videoWidth);
+      canvas.width = video.videoWidth * scale; canvas.height = video.videoHeight * scale;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      if (r) {
+        const txt = r.binaryData ? new TextDecoder().decode(new Uint8Array(r.binaryData)) : r.data;
+        if (!seen.has(txt)) {
+          seen.add(txt);
+          const res = importText(txt);
+          if (res) { n++; $('#scanStatus').innerHTML = `✅ Scanned ${n} code${n > 1 ? 's' : ''} so far. Show the next one.`; navigator.vibrate?.(80); }
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  tick();
+};
+function stopScan() { if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; } }
+
+/* ================= shell ================= */
+let onDialogClose = null;
+function openDialog(html, onClose) {
+  const d = $('#dlg');
+  if (onDialogClose && onDialogClose !== onClose) { const f = onDialogClose; onDialogClose = null; f(); }
+  onDialogClose = onClose || null;
+  $('#dlgBody').innerHTML = html;
+  if (!d.open) d.showModal();
+}
+function closeDialog() { $('#dlg').close(); }
+$('#dlg').addEventListener('close', () => { if (onDialogClose) { const f = onDialogClose; onDialogClose = null; f(); } });
+$('#dlgClose').onclick = closeDialog;
+
+let toastTimer;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); }
+function updateCount() { $('#count').textContent = `${matches.length} matches · ${pits.length} pit`; }
+function refreshViews() { renderForm($('#matchForm')); renderForm($('#pitForm')); renderData(); renderDrive(); }
+function show(view) {
+  ui.view = view; saveUI();
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  $$('.view').forEach(v => v.classList.toggle('on', v.id === 'view-' + view));
+  if (view === 'data') renderData();
+  if (view === 'drive') renderDrive();
+}
+$('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
+$$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
+
+if (!cur.scouter) cur.scouter = settings.scouter;
+if (!cur.event) cur.event = settings.event;
+renderDriveInputs();
+refreshViews(); updateCount(); show(ui.view);
+// ask the browser not to clear our storage
+navigator.storage?.persist?.();
+</script>
+</body>
+</html>
