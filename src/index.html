@@ -138,9 +138,9 @@ details.form[open] summary{margin-bottom:6px}
     <button data-view="pit">Pit</button>
     <button data-view="pre" id="navPre">Pre-event</button>
     <button data-view="data">Data</button>
-    <button data-view="rank">Rank</button>
-    <button data-view="scouts">Scouts</button>
-    <button data-view="drive">Drive Team</button>
+    <button data-view="rank" data-admin>Rank</button>
+    <button data-view="scouts" data-admin>Scouts</button>
+    <button data-view="drive" data-admin>Drive Team</button>
     <button data-view="guide">Field Guide</button>
     <button data-view="sync">Sync &amp; Settings</button>
   </nav>
@@ -231,6 +231,9 @@ details.form[open] summary{margin-bottom:6px}
     <div class="card">
       <h2>Settings</h2>
       <div class="grid">
+        <div class="field"><label>Mode</label>
+          <div class="seg" id="modePick"><button type="button" data-mode="scout">Scouting</button><button type="button" data-mode="admin">Admin</button></div>
+          <p class="hint">Scouting shows only what a scout needs. Admin adds Rank, Scouts and Drive Team.</p></div>
         <div class="field"><label>Your name (scouter)</label><input type="text" data-setting="scouter"></div>
         <div class="field"><label>Event name/code</label><input type="text" data-setting="event" placeholder="e.g. 2026miket"></div>
         <div class="field"><label>Our team #</label><input type="text" inputmode="numeric" data-setting="ourTeam"></div>
@@ -274,7 +277,7 @@ const getP = (o, p) => p.split('.').reduce((a, k) => a == null ? a : a[k], o);
 const setP = (o, p, v) => { const ks = p.split('.'), last = ks.pop(); ks.reduce((a, k) => a[k] ??= {}, o)[last] = v; };
 const parseVal = s => s === 'true' ? true : s === 'false' ? false : /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s;
 
-let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', preEvent: false, qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
+let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', mode: 'scout', preEvent: false, qrAfterSave: true, lineup: ['', '', '', '', '', ''] }, LS.get(K.settings, {}));
 let matches = LS.get(K.matches, []);
 let pits = LS.get(K.pits, []);
 let pres = LS.get(K.pre, []);
@@ -576,7 +579,7 @@ const onFieldInput = e => {
   }
   if (el.dataset.setting) {
     settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings();
-    if (el.dataset.setting === 'preEvent') $('#navPre').hidden = !settings.preEvent;
+    if (el.dataset.setting === 'preEvent') applyTabs();
   }
 };
 document.addEventListener('input', onFieldInput);
@@ -1459,13 +1462,23 @@ function show(view) {
 $('#nav').onclick = e => { const b = e.target.closest('[data-view]'); if (b) show(b.dataset.view); };
 $$('[data-setting]').forEach(el => el.type === 'checkbox' ? el.checked = !!settings[el.dataset.setting] : el.value = settings[el.dataset.setting] || '');
 
-$('#navPre').hidden = !settings.preEvent;
-if (ui.view === 'pre' && !settings.preEvent) ui.view = 'match';
+// Scouting mode (the default) hides the analysis tabs; Admin shows everything
+function applyTabs() {
+  $('#navPre').hidden = !settings.preEvent;
+  $$('#nav [data-admin]').forEach(b => b.hidden = settings.mode !== 'admin');
+  $$('#modePick button').forEach(b => b.classList.toggle('on', b.dataset.mode === settings.mode));
+  if ($(`#nav [data-view="${ui.view}"]`)?.hidden) show('match');
+}
+$('#modePick').onclick = e => {
+  const b = e.target.closest('[data-mode]'); if (!b) return;
+  settings.mode = b.dataset.mode; saveSettings(); applyTabs();
+  toast(settings.mode === 'admin' ? 'Admin mode: all tabs' : 'Scouting mode');
+};
 if (!cur.scouter) cur.scouter = settings.scouter;
 if (!curPre.scouter) curPre.scouter = settings.scouter;
 if (!cur.event) cur.event = settings.event;
 renderDriveInputs();
-refreshViews(); updateCount(); show(ui.view);
+refreshViews(); updateCount(); show(ui.view); applyTabs();
 // ask the browser not to clear our storage
 navigator.storage?.persist?.();
 </script>
