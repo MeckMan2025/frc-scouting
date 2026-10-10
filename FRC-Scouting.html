@@ -266,7 +266,7 @@ function blankMatch() {
   return {
     kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
     match: '', team: '', alliance: '', station: '', robotType: '',
-    auto: { collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
+    auto: { preload: null, collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
     tele: { collected: null, acc: null, scored: null, beached: null, recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
     end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
     extra: { penalties: 0, penKinds: [], penNotes: '', breakdown: null, comeback: null, brkNotes: '', problems: [], probNotes: '', driver: null, strategy: '', overall: '' }
@@ -363,6 +363,7 @@ $('#matchForm').innerHTML = `
 </div><p class="hint" id="editBanner" hidden>✏ Editing a saved entry. Saving will overwrite it.</p></div>
 
 <div class="card sec-auto"><h2><span class="tag">AUTO</span> First 15–20 seconds</h2><div class="grid">
+  ${seg('auto.preload', 'Preloaded?', YN, '', 'started holding a ball')}
   ${seg('auto.collected', 'Balls collected?', YN)}
   ${counter('auto.cycles', 'Cycles', [1], 'collect → score = 1')}
   ${seg('auto.acc', 'Scoring accuracy', ACC)}
@@ -511,15 +512,15 @@ $('#btnSaveMatch').onclick = () => {
   // the name and event are remembered as they're typed; this only fills a gap
   if (!settings.scouter) { settings.scouter = saved.scouter; saveSettings(); }
   if (!settings.event && saved.event) { settings.event = saved.event; saveSettings(); }
-  // a fresh form: everything cleared except the scouter's name and the event
-  cur = blankMatch(); persistDraft('match'); renderForm($('#matchForm')); updateCount();
+  // a fresh form: everything cleared except the team, the scouter's name and the event
+  cur = Object.assign(blankMatch(), { team: saved.team }); persistDraft('match'); renderForm($('#matchForm')); updateCount();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Saved team ${saved.team}, match ${saved.match}`);
   if (settings.qrAfterSave) showQR([saved], 0);
 };
 $('#btnResetMatch').onclick = () => {
   if (!confirm('Clear this form?')) return;
-  cur = blankMatch();   // keeps the scouter's name and the event
+  cur = Object.assign(blankMatch(), { team: cur.team });   // keeps the team, the scouter's name and the event
   persistDraft('match'); renderForm($('#matchForm'));
 };
 $('#btnSavePit').onclick = () => {
@@ -564,7 +565,7 @@ function teamStats(team) {
   return {
     team, n: ms.length, ms, pit: pits.find(p => p.team === team),
     // matches where they did it
-    autoCol: count(m => m.auto.collected === true), autoScr: count(m => m.auto.scored === true),
+    autoPre: count(m => m.auto.preload === true), autoCol: count(m => m.auto.collected === true), autoScr: count(m => m.auto.scored === true),
     teleCol: count(m => m.tele.collected === true), teleScr: count(m => m.tele.scored === true),
     autoAcc: avg(ms.map(m => m.auto.acc)), autoCyc: avg(ms.map(m => m.auto.cycles)),
     teleAcc: avg(ms.map(m => m.tele.acc)),
@@ -623,7 +624,7 @@ const TABLES = {
     cols: [
       ['Match', m => +m.match], ['Team', m => +m.team], ['Alliance', m => m.alliance + m.station, (v, m) => m.alliance ? `<span class="${m.alliance === 'R' ? 'r' : 'b'}">${m.alliance}${m.station}</span>` : '—'],
       ['Robot type', m => m.robotType || null],
-      ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
+      ['Preload', m => m.auto.preload, yn], ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
       ['Tele col', m => m.tele.collected, yn], ['Tele scr', m => m.tele.scored, yn], ['Tele %', m => m.tele.acc, pct],
       ['End cyc', m => m.end.cycles], ['Climb', m => m.end.climb === 'ok' ? 10 + (+m.end.rung || 0) : m.end.climb === 'fail' ? 1 : 0, (v, m) => climbLabel(m)],
       ['Defense', m => m.tele.defense, yn], ['Beached', m => m.tele.beached, yn], ['Broke', m => m.extra.breakdown, yn], ['Pen.', m => m.extra.penalties],
@@ -687,7 +688,7 @@ function openTeam(team) {
 // The answers on one match form, in the order the form asks them.
 function matchDetail(m) {
   return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
-    <p><b>Auto:</b> collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
+    <p><b>Auto:</b> preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
     <b>Extra:</b> ${m.extra.penalties} penalties${m.extra.penKinds.length ? ' (' + esc(m.extra.penKinds.join(', ')) + ')' : ''}, broke down ${yn(m.extra.breakdown)}, driver ${m.extra.driver ?? '—'}/5${m.extra.problems.length ? '<br><b>Problems:</b> ' + esc(m.extra.problems.join(', ')) : ''}</p>
@@ -739,6 +740,7 @@ const share = (k) => s => s.n ? s[k] / s.n * 100 : null;
 const SEC = { all: ['Overall', 'var(--accent)'], auto: ['Auto', 'var(--auto)'], tele: ['Teleop', 'var(--tele)'], end: ['Endgame', 'var(--end)'], extra: ['Extra', 'var(--accent)'] };
 const RANK = [
   { id: 'overall', sec: 'all', label: 'Overall', max: 100, unit: '%', get: s => overall(s), q: 'Average of: scores in auto, scores in teleop, teleop accuracy, climb success, no breakdowns and driver skill.' },
+  { id: 'autoPre', sec: 'auto', label: 'Preloads', max: 100, unit: '%', get: share('autoPre'), q: 'Auto · Preloaded? — share of matches answered Yes.' },
   { id: 'autoCol', sec: 'auto', label: 'Collects', max: 100, unit: '%', get: share('autoCol'), q: 'Auto · Balls collected? — share of matches answered Yes.' },
   { id: 'autoScr', sec: 'auto', label: 'Scores', max: 100, unit: '%', get: share('autoScr'), q: 'Auto · Balls scored? — share of matches answered Yes.' },
   { id: 'autoAcc', sec: 'auto', label: 'Accuracy', max: 100, unit: '%', get: s => s.autoAcc, q: 'Auto · Scoring accuracy — average of the estimates.' },
