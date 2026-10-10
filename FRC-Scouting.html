@@ -464,6 +464,14 @@ document.addEventListener('click', e => {
 const onFieldInput = e => {
   const el = e.target, form = el.closest('[data-model]');
   if (form && el.dataset.k) { setP(model(form.dataset.model), el.dataset.k, el.value.trim() === '' ? '' : el.value); persistDraft(form.dataset.model); }
+  // Remember the scouter's name and the event the moment they're typed, so a
+  // Reset or a new form brings them straight back. Settings shows the same values.
+  if (form && (el.dataset.k === 'scouter' || el.dataset.k === 'event')) {
+    const k = el.dataset.k;
+    settings[k] = el.value.trim(); saveSettings();
+    $$(`[data-setting="${k}"]`).forEach(x => x.value = settings[k]);
+    if (form.dataset.model === 'match' && k === 'scouter' && !curPit.scouter) { curPit.scouter = settings.scouter; persistDraft('pit'); renderForm($('#pitForm')); }
+  }
   if (el.dataset.setting) { settings[el.dataset.setting] = el.type === 'checkbox' ? el.checked : el.value.trim(); saveSettings(); }
 };
 document.addEventListener('input', onFieldInput);
@@ -500,18 +508,18 @@ $('#btnSaveMatch').onclick = () => {
   const saved = clone(cur);
   upsert(matches, saved);
   if (!LS.set(K.matches, matches)) return;
-  settings.scouter = cur.scouter; settings.event = cur.event; saveSettings();
-  const next = blankMatch();
-  next.match = String(+saved.match + 1); next.alliance = saved.alliance; next.station = saved.station;
-  cur = next; persistDraft('match'); renderForm($('#matchForm')); updateCount();
+  // the name and event are remembered as they're typed; this only fills a gap
+  if (!settings.scouter) { settings.scouter = saved.scouter; saveSettings(); }
+  if (!settings.event && saved.event) { settings.event = saved.event; saveSettings(); }
+  // a fresh form: everything cleared except the scouter's name and the event
+  cur = blankMatch(); persistDraft('match'); renderForm($('#matchForm')); updateCount();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Saved team ${saved.team}, match ${saved.match}`);
   if (settings.qrAfterSave) showQR([saved], 0);
 };
 $('#btnResetMatch').onclick = () => {
   if (!confirm('Clear this form?')) return;
-  const keep = { match: cur.match, alliance: cur.alliance, station: cur.station };
-  cur = Object.assign(blankMatch(), cur.id && matches.some(x => x.id === cur.id) ? {} : keep);
+  cur = blankMatch();   // keeps the scouter's name and the event
   persistDraft('match'); renderForm($('#matchForm'));
 };
 $('#btnSavePit').onclick = () => {
@@ -525,7 +533,7 @@ $('#btnSavePit').onclick = () => {
   pits = pits.filter(p => p.team !== saved.team || p.id === saved.id);
   upsert(pits, saved);
   if (!LS.set(K.pits, pits)) return;
-  if (curPit.scouter) { settings.scouter = curPit.scouter; saveSettings(); }
+  if (!settings.scouter && saved.scouter) { settings.scouter = saved.scouter; saveSettings(); }
   curPit = blankPit(); persistDraft('pit'); renderForm($('#pitForm')); updateCount();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Saved pit entry for ${saved.team}`);
