@@ -115,6 +115,9 @@ dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:
 .legend i{display:inline-block;width:14px;height:10px;border-radius:0 3px 3px 0;background:var(--muted)}
 .legend b{display:inline-block;width:2px;height:14px;background:var(--text);opacity:.75}
 #tip{position:fixed;z-index:50;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;box-shadow:0 6px 20px #0008;max-width:240px}
+details.form{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--panel2)}
+details.form summary{cursor:pointer;min-height:28px}
+details.form[open] summary{margin-bottom:6px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -646,27 +649,63 @@ function pitBlock(p) {
 }
 function openTeam(team) {
   const s = teamStats(team);
+  const forms = s.ms.slice().reverse();
   openDialog(`<h2 style="margin-top:0">Team ${esc(team)}</h2>
     <ul>${blurb(s).map(x => `<li>${x}</li>`).join('')}</ul>
     ${profileBlock(s)}
     <h3>Pit scouting</h3>${pitBlock(s.pit)}
-    <h3>Match notes</h3>${s.ms.length ? s.ms.slice().reverse().map(m => `<div style="margin:10px 0"><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span>${noteLines(m) || '<div class="muted">No written notes.</div>'}</div>`).join('') : '<p class="muted">None.</p>'}`);
+    ${s.pit ? `<div class="row">${formButtons('pit', s.pit.id)}</div>` : ''}
+    <h3>Match forms (${forms.length})</h3>
+    ${forms.length ? `<p class="hint" style="margin-top:-6px">Tap a match to see the whole form.</p>${forms.map(m => `<details class="form">
+      <summary><b>Match ${esc(m.match)}</b> <span class="muted">· ${esc(m.scouter)} · scored ${m.auto.scored || m.tele.scored ? 'Y' : 'N'} · ${climbLabel(m)}</span></summary>
+      ${matchDetail(m)}<div class="row">${formButtons('match', m.id)}</div></details>`).join('')}` : '<p class="muted">None yet.</p>'}`);
 }
-function openMatch(id) {
-  const m = matches.find(x => x.id === id); if (!m) return;
-  openDialog(`<h2 style="margin-top:0">Team ${esc(m.team)} · Match ${esc(m.match)}</h2>
-    <p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
+// The answers on one match form, in the order the form asks them.
+function matchDetail(m) {
+  return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
     <p><b>Auto:</b> collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
     <b>Extra:</b> ${m.extra.penalties} penalties${m.extra.penKinds.length ? ' (' + esc(m.extra.penKinds.join(', ')) + ')' : ''}, broke down ${yn(m.extra.breakdown)}, driver ${m.extra.driver ?? '—'}/5${m.extra.problems.length ? '<br><b>Problems:</b> ' + esc(m.extra.problems.join(', ')) : ''}</p>
-    ${noteLines(m)}
-    <div class="row" style="margin-top:12px"><button class="btn small" id="mEdit">Edit</button><button class="btn small" id="mQR">QR code</button><button class="btn small" id="mTeam">Team ${esc(m.team)} summary</button><button class="btn small danger" id="mDel">Delete</button></div>`);
-  $('#mEdit').onclick = () => { cur = upgrade(clone(m), blankMatch()); persistDraft('match'); renderForm($('#matchForm')); closeDialog(); show('match'); window.scrollTo(0, 0); };
-  $('#mQR').onclick = () => showQR([m], 0);
-  $('#mTeam').onclick = () => openTeam(m.team);
-  $('#mDel').onclick = () => { if (!confirm(`Delete team ${m.team} match ${m.match}?`)) return; matches = matches.filter(x => x.id !== m.id); LS.set(K.matches, matches); closeDialog(); renderData(); updateCount(); };
+    ${noteLines(m) || '<div class="muted">No written notes.</div>'}`;
 }
+const formButtons = (kind, id) => `<button class="btn small" data-act="edit" data-kind="${kind}" data-id="${esc(id)}">Edit</button>${kind === 'match' ? `<button class="btn small" data-act="qr" data-id="${esc(id)}">QR code</button>` : ''}<button class="btn small danger" data-act="del" data-kind="${kind}" data-id="${esc(id)}">Delete</button>`;
+function openMatch(id) {
+  const m = matches.find(x => x.id === id); if (!m) return;
+  openDialog(`<h2 style="margin-top:0">Team ${esc(m.team)} · Match ${esc(m.match)}</h2>
+    ${matchDetail(m)}
+    <div class="row" style="margin-top:12px">${formButtons('match', m.id)}<button class="btn small" data-act="team" data-id="${esc(m.team)}">Team ${esc(m.team)} summary</button></div>`);
+}
+// Edit loads the saved form back into Match or Pit; saving there overwrites it.
+function editForm(kind, id) {
+  if (kind === 'pit') {
+    const p = pits.find(x => x.id === id); if (!p) return;
+    curPit = upgrade(clone(p), blankPit()); persistDraft('pit'); renderForm($('#pitForm'));
+  } else {
+    const m = matches.find(x => x.id === id); if (!m) return;
+    cur = ballsYN(upgrade(clone(m), blankMatch())); persistDraft('match'); renderForm($('#matchForm'));
+  }
+  closeDialog(); show(kind); window.scrollTo(0, 0);
+  toast('Editing: change anything, then save to overwrite it');
+}
+function deleteForm(kind, id) {
+  const list = kind === 'pit' ? pits : matches, e = list.find(x => x.id === id); if (!e) return;
+  if (!confirm(kind === 'pit' ? `Delete the pit entry for team ${e.team}?` : `Delete team ${e.team} match ${e.match}?`)) return;
+  if (kind === 'pit') { pits = pits.filter(x => x.id !== id); LS.set(K.pits, pits); }
+  else { matches = matches.filter(x => x.id !== id); LS.set(K.matches, matches); }
+  updateCount(); refreshViews();
+  toast('Deleted');
+  // stay on the team if it still has anything, so several can be cleaned up in a row
+  if (matches.some(x => x.team === e.team) || pits.some(x => x.team === e.team)) openTeam(e.team); else closeDialog();
+}
+$('#dlgBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const { act, kind, id } = b.dataset;
+  if (act === 'edit') editForm(kind, id);
+  else if (act === 'del') deleteForm(kind, id);
+  else if (act === 'qr') showQR([matches.find(x => x.id === id)].filter(Boolean), 0);
+  else if (act === 'team') openTeam(id);
+});
 
 /* ================= rank ================= */
 // One entry per question worth ranking on. get() returns the team's number,
