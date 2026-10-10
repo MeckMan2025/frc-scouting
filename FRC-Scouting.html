@@ -222,7 +222,7 @@ const saveUI = () => LS.set(K.ui, ui);
 function blankMatch() {
   return {
     kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
-    match: '', team: '', alliance: '', station: '',
+    match: '', team: '', alliance: '', station: '', robotType: '',
     auto: { collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
     tele: { collected: null, acc: null, scored: null, beached: null, recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
     end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
@@ -313,6 +313,7 @@ $('#matchForm').innerHTML = `
 <div class="card"><h2>Match info</h2><div class="grid">
   ${input('team', 'Team #', 'e.g. 254', true)}${input('match', 'Match #', 'e.g. 12', true)}
   ${seg('alliance', 'Alliance', [['R', 'Red'], ['B', 'Blue']], 'alliance')}${seg('station', 'Driver station', [['1', '1'], ['2', '2'], ['3', '3']])}
+  ${input('robotType', 'Robot type', 'e.g. shooter, defense bot, swerve')}
   ${input('scouter', 'Scouter')}${input('event', 'Event')}
 </div><p class="hint" id="editBanner" hidden>✏ Editing a saved entry. Saving will overwrite it.</p></div>
 
@@ -565,6 +566,7 @@ const TABLES = {
     rows: () => matches,
     cols: [
       ['Match', m => +m.match], ['Team', m => +m.team], ['Alliance', m => m.alliance + m.station, (v, m) => m.alliance ? `<span class="${m.alliance === 'R' ? 'r' : 'b'}">${m.alliance}${m.station}</span>` : '—'],
+      ['Robot type', m => m.robotType || null],
       ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
       ['Tele col', m => m.tele.collected, yn], ['Tele scr', m => m.tele.scored, yn], ['Tele %', m => m.tele.acc, pct],
       ['End cyc', m => m.end.cycles], ['Climb', m => m.end.climb === 'ok' ? 10 + (+m.end.rung || 0) : m.end.climb === 'fail' ? 1 : 0, (v, m) => climbLabel(m)],
@@ -623,7 +625,7 @@ function openTeam(team) {
 function openMatch(id) {
   const m = matches.find(x => x.id === id); if (!m) return;
   openDialog(`<h2 style="margin-top:0">Team ${esc(m.team)} · Match ${esc(m.match)}</h2>
-    <p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
+    <p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
     <p><b>Auto:</b> collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
