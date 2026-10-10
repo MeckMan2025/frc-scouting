@@ -299,7 +299,7 @@ function blankMatch() {
   return {
     kind: 'match', v: 1, id: '', ts: 0, scouter: settings.scouter, event: settings.event,
     match: '', team: '', alliance: '', station: '', robotType: '',
-    auto: { preload: null, path: [], collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
+    auto: { start: null, preload: null, path: [], collected: null, cycles: 0, acc: null, scored: null, hang: null, down: null, notes: '' },
     tele: { collected: null, acc: null, scored: null, beached: null, beachWhere: [], recovered: null, defense: null, defZones: [], defDots: [], notes: '' },
     end: { cycles: 0, acc: null, climb: null, rung: null, notes: '' },
     extra: { penalties: 0, penKinds: [], penNotes: '', breakdown: null, comeback: null, stop: null, brkNotes: '', problems: [], probNotes: '', driver: null, strategy: '', overall: '' }
@@ -359,6 +359,7 @@ const PEN_KINDS = ['Minor foul', 'Major foul', 'Yellow card', 'Red card', 'Pinni
 const PROBLEMS = ['Lost comms', 'Brownout / no power', 'Mechanism broke', 'Tipped over', 'Jammed intake', 'Stuck on game piece', 'Auto failed', "Didn't move", 'Slow cycles', 'Missed a lot', 'Shaky driving', 'Easily pushed'];
 const ROBOT_TYPES = ['Under trench', 'Over bump', 'Both'];
 const CLIMB = [['none', 'No attempt'], ['fail', 'Tried, failed'], ['ok', 'Climbed']];
+const STARTS = [['Left', 'Left'], ['Middle', 'Middle'], ['Right', 'Right']];
 const STOPS = [['none', 'No'], ['astop', 'A-stop'], ['estop', 'E-stop']];
 const stopLabel = v => v === 'estop' ? 'E-stop' : v === 'astop' ? 'A-stop' : v === 'none' ? 'No' : '—';
 const PRE_SOURCES = ['Match video', 'Blue Alliance / Statbotics', 'Talked to team', 'Saw them in person', 'Other'];
@@ -426,6 +427,7 @@ $('#matchForm').innerHTML = `
 </div><p class="hint" id="editBanner" hidden>✏ Editing a saved entry. Saving will overwrite it.</p></div>
 
 <div class="card sec-auto"><h2><span class="tag">AUTO</span> First 15–20 seconds</h2><div class="grid">
+  ${seg('auto.start', 'Starting position', STARTS, '', "from their driver station's view")}
   ${seg('auto.preload', 'Preloaded?', YN, '', 'started holding a ball')}
   <div class="field wide"><label>Auto path <small>tap where it started, then each place it went</small></label>${fieldSVG('autoMap')}
     <div class="row" style="margin-top:6px"><button type="button" class="btn small" id="pathUndo">Undo point</button><button type="button" class="btn small" id="pathClear">Clear path</button><span class="hint" style="margin:0">Green = start.</span></div></div>
@@ -631,7 +633,14 @@ $('#autoMap').addEventListener('click', e => {
   const p = pt.matrixTransform(svg.getScreenCTM().inverse());
   const x = Math.round(p.x), y = Math.round(p.y);
   if (hubAt(x, y)) return toast("That's the hub. Tap next to it.");
-  cur.auto.path.push([x, y]); persistDraft('match'); drawPath();
+  cur.auto.path.push([x, y]);
+  // the first tap is where it started: fill Starting position if it's blank.
+  // Red drivers face right, blue face left, so "left" flips with the alliance.
+  if (cur.auto.path.length === 1 && !cur.auto.start && cur.alliance) {
+    const third = y < FIELD.h / 3 ? 0 : y > FIELD.h * 2 / 3 ? 2 : 1;
+    cur.auto.start = STARTS[cur.alliance === 'R' ? third : 2 - third][0];
+  }
+  persistDraft('match'); renderForm($('#matchForm'));
 });
 $('#pathUndo').onclick = () => { cur.auto.path.pop(); persistDraft('match'); drawPath(); };
 $('#pathClear').onclick = () => { cur.auto.path = []; persistDraft('match'); drawPath(); };
@@ -739,7 +748,7 @@ function autoSummary(m) {
   const out = [`Team ${m.team || '?'}${m.match ? ` in match ${m.match}` : ''}${about ? ` (${about})` : ''}.`];
   const scored = (v, acc) => v === true ? `scored${acc != null ? ` (~${acc}%)` : ''}` : v === false ? "didn't score" : '';
   const a = m.auto;
-  const auto = list([a.preload === true && 'preloaded', (a.path || []).length > 1 && `drove a ${a.path.length - 1}-leg path`, a.collected === true ? 'collected balls' : a.collected === false && "didn't collect",
+  const auto = list([a.start && `started ${a.start.toLowerCase()}`, a.preload === true && 'preloaded', (a.path || []).length > 1 && `drove a ${a.path.length - 1}-leg path`, a.collected === true ? 'collected balls' : a.collected === false && "didn't collect",
     scored(a.scored, a.acc), +a.cycles > 0 && `${a.cycles} cycle${a.cycles > 1 ? 's' : ''}`,
     a.hang === true ? `hung${a.down === true ? ' and got back down' : a.down === false ? " but didn't get down" : ''}` : '']);
   if (auto) out.push(`Auto: ${auto}.`);
@@ -794,7 +803,7 @@ function teamStats(team) {
     autoAcc: avg(ms.map(m => m.auto.acc)), autoCyc: avg(ms.map(m => m.auto.cycles)),
     teleAcc: avg(ms.map(m => m.tele.acc)),
     endCyc: avg(ms.map(m => m.end.cycles)),
-    autoHang: count(m => m.auto.hang === true),
+    autoHang: count(m => m.auto.hang === true), starts: tally(ms.map(m => m.auto.start).filter(Boolean)),
     climbOk: climbs.length, climbTry: count(m => m.end.climb === 'ok' || m.end.climb === 'fail'),
     bestRung: climbs.reduce((b, m) => Math.max(b, +m.end.rung || 0), 0),
     usualRung: topTags(tally(climbs.map(m => m.end.rung).filter(Boolean)), 1)[0]?.[0],
@@ -818,6 +827,7 @@ function blurb(s) {
     out.push(`Collected balls in teleop in ${s.teleCol} of ${s.n}, in auto in ${s.autoCol} of ${s.n}.`);
     if (s.climbTry) out.push(`Climbed in <b>${s.climbOk} of ${s.n}</b> matches${s.usualRung ? `, usually rung ${s.usualRung}` : ''}${s.climbTry > s.climbOk ? ` (failed ${s.climbTry - s.climbOk}×)` : ''}.`);
     else out.push('Has not tried a climb.');
+    if (Object.keys(s.starts).length) out.push(`Starts auto: ${topTags(s.starts).map(([k, v]) => `${k.toLowerCase()} ×${v}`).join(', ')}.`);
     if (s.autoHang) out.push(`Hangs in auto (${s.autoHang}/${s.n}).`);
     if (s.def) out.push(`Played defense in ${s.def}/${s.n}${Object.keys(s.defZones).length ? `, mostly ${topTags(s.defZones, 2).map(x => x[0]).join(' and ')}` : ''}.`);
     if (s.beached) out.push(`<span class="flag">Got beached ${s.beached}×</span>${Object.keys(s.beachWhere).length ? ` (mostly ${topTags(s.beachWhere, 2).map(x => x[0].toLowerCase()).join(' and ')})` : ''}${s.recovered ? ` (got free ${s.recovered}×)` : ', never got free'}.`);
@@ -851,7 +861,7 @@ const TABLES = {
     cols: [
       ['Match', m => +m.match], ['Team', m => +m.team], ['Alliance', m => m.alliance + m.station, (v, m) => m.alliance ? `<span class="${m.alliance === 'R' ? 'r' : 'b'}">${m.alliance}${m.station}</span>` : '—'],
       ['Robot type', m => m.robotType || null],
-      ['Preload', m => m.auto.preload, yn], ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
+      ['Start', m => m.auto.start || null], ['Preload', m => m.auto.preload, yn], ['Auto col', m => m.auto.collected, yn], ['Auto scr', m => m.auto.scored, yn], ['Auto %', m => m.auto.acc, pct],
       ['Tele col', m => m.tele.collected, yn], ['Tele scr', m => m.tele.scored, yn], ['Tele %', m => m.tele.acc, pct],
       ['End cyc', m => m.end.cycles], ['Climb', m => m.end.climb === 'ok' ? 10 + (+m.end.rung || 0) : m.end.climb === 'fail' ? 1 : 0, (v, m) => climbLabel(m)],
       ['Defense', m => m.tele.defense, yn], ['Beached', m => m.tele.beached, yn], ['Broke', m => m.extra.breakdown, yn], ['Stop', m => m.extra.stop === 'estop' ? 2 : m.extra.stop === 'astop' ? 1 : m.extra.stop === 'none' ? 0 : null, (v, m) => stopLabel(m.extra.stop)], ['Pen.', m => m.extra.penalties],
@@ -972,7 +982,7 @@ function writtenBlock(ms) {
 function matchDetail(m) {
   return `<p class="muted">${m.alliance ? (m.alliance === 'R' ? 'Red' : 'Blue') + ' ' + m.station + ' · ' : ''}${m.robotType ? esc(m.robotType) + ' · ' : ''}${esc(m.scouter)} · ${new Date(m.ts).toLocaleString()}</p>
     ${(m.auto.path || []).length ? `<div style="max-width:420px">${fieldSVG('', pathSVG(m.auto.path))}</div>` : ''}
-    <p><b>Auto:</b> preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
+    <p><b>Auto:</b> started ${m.auto.start ? esc(m.auto.start.toLowerCase()) : '—'}, preloaded ${yn(m.auto.preload)}, collected ${yn(m.auto.collected)}, ${m.auto.cycles} cycles, scored ${yn(m.auto.scored)} (${pct(m.auto.acc)}), hang ${yn(m.auto.hang)}, got down ${yn(m.auto.down)}<br>
     <b>Teleop:</b> collected ${yn(m.tele.collected)}, scored ${yn(m.tele.scored)} (${pct(m.tele.acc)}), beached ${yn(m.tele.beached)}${m.tele.beached ? `${(m.tele.beachWhere || []).length ? ' (' + esc(m.tele.beachWhere.join(', ')) + ')' : ''}, recovered ${yn(m.tele.recovered)}` : ''}, defense ${yn(m.tele.defense)}${m.tele.defZones.length ? ' (' + esc(m.tele.defZones.join(', ')) + ')' : ''}<br>
     <b>Endgame:</b> ${m.end.cycles} cycles (${pct(m.end.acc)}), climb ${climbLabel(m)}<br>
     <b>Extra:</b> ${m.extra.penalties} penalties${m.extra.penKinds.length ? ' (' + esc(m.extra.penKinds.join(', ')) + ')' : ''}, broke down ${yn(m.extra.breakdown)}, stop: ${stopLabel(m.extra.stop)}, driver ${m.extra.driver ?? '—'}/5${m.extra.problems.length ? '<br><b>Problems:</b> ' + esc(m.extra.problems.join(', ')) : ''}</p>
@@ -1228,6 +1238,7 @@ $('#view-guide').innerHTML = `
 <dt>Cycle</dt><dd>One trip: pick up balls, then score them. Count one each time they score after collecting.</dd>
 <dt>Accuracy</dt><dd>Out of the balls they shot, about how many went in. A guess is fine: about half = ~50%.</dd>
 <dt>Balls collected / scored</dt><dd>Yes or No: did the robot pick up any balls, and did it get any in? You don't need to count them.</dd>
+<dt>Starting position</dt><dd>Where the robot sat when the match began: left, middle or right, as seen by <b>their</b> drivers behind the glass. Tapping the first point of the auto path fills it in for you.</dd>
 <dt>Auto path</dt><dd>Tap the map where the robot started (green), then each place it drove to, in order. Undo point takes back the last tap.</dd>
 <dt>Hang / get down</dt><dd>In auto, did the robot hang on the structure? Only if Yes: did it get back down to keep playing?</dd>
 <dt>Beached</dt><dd>The robot got stuck and couldn't drive: on the bump, in the trench, on a ball, or against another robot. Tap where it happened.</dd>
