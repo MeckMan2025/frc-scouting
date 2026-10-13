@@ -175,6 +175,9 @@ details.form[open] summary{margin-bottom:6px}
     </div>
     <p class="hint">Tap a column to sort. Tap a row for the written notes.</p>
     <div class="tablewrap"><table id="dataTable"></table></div>
+    <div class="card" style="margin-top:14px"><h2>Last synced from each scout</h2>
+      <div class="tablewrap"><table id="scanTable"></table></div>
+      <p class="hint">When this device last scanned each scout's QR code, or took their file / AirDrop. Entries = how many came in that time.</p></div>
   </section>
 
   <section class="view" id="view-rank">
@@ -265,7 +268,7 @@ details.form[open] summary{margin-bottom:6px}
 /* ================= storage ================= */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-const K = { matches: 'frcs.matches', pits: 'frcs.pits', settings: 'frcs.settings', draft: 'frcs.draft', pitDraft: 'frcs.pitDraft', pre: 'frcs.pre', preDraft: 'frcs.preDraft', ui: 'frcs.ui' };
+const K = { matches: 'frcs.matches', pits: 'frcs.pits', settings: 'frcs.settings', draft: 'frcs.draft', pitDraft: 'frcs.pitDraft', pre: 'frcs.pre', preDraft: 'frcs.preDraft', scans: 'frcs.scans', ui: 'frcs.ui' };
 const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { toast('⚠ Could not save. Storage is full or blocked. Export your data!'); return false; } }
@@ -281,6 +284,8 @@ let settings = Object.assign({ scouter: '', event: '', ourTeam: '', tbaKey: '', 
 let matches = LS.get(K.matches, []);
 let pits = LS.get(K.pits, []);
 let pres = LS.get(K.pre, []);
+// when this device last received each scout's data: { 'ana': { name, qr, qrN, file, fileN } }
+let scanLog = LS.get(K.scans, {});
 const ui = Object.assign({ view: 'match', dataMode: 'teams', rankBy: 'overall', sort: { teams: ['Tele scores', -1], matches: ['Match', 1], pits: ['Team', 1] } }, LS.get(K.ui, {}));
 const saveSettings = () => LS.set(K.settings, settings);
 const saveUI = () => LS.set(K.ui, ui);
@@ -468,7 +473,7 @@ $('#matchForm').innerHTML = `
   ${text('extra.strategy', 'Strategy: what are they doing?', 'e.g. Cycles from the depot and shoots from the ladder. Switches to defense in the last 30 seconds.')}
   ${text('extra.overall', 'Overall match summary: would they work well with us?', 'Two or three sentences a drive coach can read in 10 seconds. Good partner for us? Why or why not?', 4)}
   <div class="field wide" style="margin-top:-6px"><button type="button" class="btn small" id="btnAutoSum">✨ Fill from my answers</button>
-    <span class="hint" style="margin-left:6px">Writes a summary from everything above. Edit it, then add whether they'd work well with us.</span></div>
+    <span class="hint" style="margin-left:6px">Writes a summary from everything above. Edit it however you like.</span></div>
 </div></div>
 <div class="savebar"><button type="button" class="btn primary" id="btnSaveMatch">Save match</button><button type="button" class="btn" id="btnResetMatch">Reset</button></div>`;
 
@@ -737,7 +742,7 @@ $('#preList').addEventListener('click', e => {
 });
 
 // A first draft of the overall summary, written from the answers on the form.
-// The scout edits it and adds whether they'd work well with us.
+// The scout edits it before saving.
 function autoSummary(m) {
   const list = a => a.filter(Boolean).join(', ');
   const side = m.alliance ? `${m.alliance === 'R' ? 'Red' : 'Blue'}${m.station ? ' ' + m.station : ''}` : '';
@@ -765,7 +770,6 @@ function autoSummary(m) {
     x.problems.length && 'problems: ' + x.problems.join(', ').toLowerCase(), x.driver != null && `driver ${x.driver}/5`]);
   if (extra) out.push(extra.charAt(0).toUpperCase() + extra.slice(1) + '.');
   if (x.strategy && x.strategy.trim()) out.push(`Their strategy: ${x.strategy.trim()}`);
-  out.push('Work well with us? ');
   return out.join(' ');
 }
 function fillSummary(force) {
@@ -872,8 +876,24 @@ const TABLES = {
     open: p => openTeam(p.team)
   }
 };
+const ago = t => {
+  if (!t) return '—';
+  const m = Math.floor((Date.now() - t) / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : h < 24 ? `${h} h ${m % 60} min ago` : `${d} day${d > 1 ? 's' : ''} ago`;
+};
+const clock = t => t ? new Date(t).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+function renderScans() {
+  const rows = Object.values(scanLog).sort((a, b) => Math.max(b.qr || 0, b.file || 0) - Math.max(a.qr || 0, a.file || 0));
+  const cell = (t, n) => t ? `<b>${ago(t)}</b><br><span class="muted">${clock(t)} · ${n} entr${n === 1 ? 'y' : 'ies'}</span>` : '<span class="muted">never</span>';
+  $('#scanTable').innerHTML = `<thead><tr><th>Scout</th><th>Last QR scan</th><th>Last file / AirDrop</th></tr></thead><tbody>${rows.length
+    ? rows.map(r => `<tr><td>${esc(r.name)}</td><td>${cell(r.qr, r.qrN)}</td><td>${cell(r.file, r.fileN)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="muted">Nothing scanned or imported on this device yet.</td></tr>'}</tbody>`;
+}
+// keep the "min ago" honest while the Data tab is open
+setInterval(() => { if (ui.view === 'data') renderScans(); }, 30000);
 let tableRows = [];
 function renderData() {
+  renderScans();
   const mode = ui.dataMode, T = TABLES[mode], [sk, sd] = ui.sort[mode];
   $$('#dataMode button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
   const f = cleanTeam($('#dataFilter').value);
@@ -1173,7 +1193,6 @@ function renderScouts() {
   };
   matches.forEach(e => add(e, 'match')); pits.forEach(e => add(e, 'pit')); pres.forEach(e => add(e, 'pre'));
   const rows = [...who.values()].sort((a, b) => b.match + b.pit + b.pre - (a.match + a.pit + a.pre));
-  const ago = t => { if (!t) return '—'; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
   $('#scoutTable').innerHTML = `<thead><tr><th>Scout</th><th>Matches</th><th>Pit</th>${pres.length ? '<th>Pre-event</th>' : ''}<th>Teams</th><th>Last saved</th></tr></thead><tbody>${rows.length ? rows.map(r =>
     `<tr><td>${esc(r.name)}${r.name.toLowerCase() === String(settings.scouter).trim().toLowerCase() ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.match}</td><td>${r.pit}</td>${pres.length ? `<td>${r.pre}</td>` : ''}<td>${r.teams.size}</td><td>${ago(r.last)}</td></tr>`).join('')
     : `<tr><td colspan="6" class="muted">Nothing saved yet.</td></tr>`}</tbody>`;
@@ -1283,7 +1302,7 @@ async function qrParts(e) {
 // the scanner's side: plain JSON imports straight away, parts wait for the rest
 const qrGroups = new Map();
 async function readQR(bytes) {
-  if (bytes[0] !== 2) return { done: importText(new TextDecoder().decode(bytes)) };
+  if (bytes[0] !== 2) return { done: importText(new TextDecoder().decode(bytes), 'qr') };
   const [, i, n] = bytes, key = bytes.slice(3, 7).join('.');
   const g = qrGroups.get(key) || qrGroups.set(key, new Array(n).fill(null)).get(key);
   g[i] = bytes.slice(7);
@@ -1291,7 +1310,7 @@ async function readQR(bytes) {
   if (have < n) return { part: have, of: n };
   qrGroups.delete(key);
   const all = new Uint8Array(g.reduce((s, x) => s + x.length, 0)); let o = 0; for (const x of g) { all.set(x, o); o += x.length; }
-  return { done: importText(new TextDecoder().decode(await squeeze(all, 'in'))) };
+  return { done: importText(new TextDecoder().decode(await squeeze(all, 'in')), 'qr') };
 }
 // shorter QR payload: leave out empty values
 function compact(o) {
@@ -1335,8 +1354,9 @@ $('#btnQRAll').onclick = () => {
   showQR(mine, 0);
 };
 
-function mergeEntries(list) {
+function mergeEntries(list, via) {
   let added = 0, updated = 0;
+  const now = Date.now(), seen = {};
   for (const raw of list) {
     if (!raw || typeof raw !== 'object' || !raw.id || !raw.team) continue;
     const isPit = raw.kind === 'pit', kind = isPit ? 'pit' : raw.kind === 'pre' ? 'pre' : 'match';
@@ -1345,16 +1365,23 @@ function mergeEntries(list) {
     e.team = cleanTeam(e.team);
     const arr = listOf(kind), i = arr.findIndex(x => x.id === e.id);
     delete e.photo;   // pit photos were dropped; ignore any from an older device
+    if (via) { const name = String(e.scouter || '').trim() || 'Unknown'; const k = name.toLowerCase(); seen[k] = seen[k] || { name, n: 0 }; seen[k].n++; }
     if (i < 0) { arr.push(e); added++; } else if ((e.ts || 0) > (arr[i].ts || 0)) { arr[i] = e; updated++; }
   }
+  // remember when each scout's data last arrived, and how
+  for (const [k, { name, n }] of Object.entries(seen)) {
+    const r = scanLog[k] = Object.assign({ name }, scanLog[k]);
+    r.name = name; r[via] = now; r[via + 'N'] = n;
+  }
+  if (via) LS.set(K.scans, scanLog);
   LS.set(K.matches, matches); LS.set(K.pits, pits); LS.set(K.pre, pres); updateCount(); refreshViews();
   return { added, updated };
 }
-function importText(txt) {
+function importText(txt, via = 'file') {
   let data;
   try { data = JSON.parse(txt); } catch (e) { toast('That isn\'t scouting data (bad JSON)'); return null; }
   const list = Array.isArray(data) ? data : data.matches || data.pits || data.pre ? [...(data.matches || []), ...(data.pits || []), ...(data.pre || [])] : [data];
-  const r = mergeEntries(list);
+  const r = mergeEntries(list, via);
   toast(`Imported: ${r.added} new, ${r.updated} updated`);
   return r;
 }
