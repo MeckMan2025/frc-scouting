@@ -662,15 +662,17 @@ $('#btnSaveMatch').onclick = () => {
   // the name and event are remembered as they're typed; this only fills a gap
   if (!settings.scouter) { settings.scouter = saved.scouter; saveSettings(); }
   if (!settings.event && saved.event) { settings.event = saved.event; saveSettings(); }
-  // a fresh form: everything cleared except the team, the scouter's name and the event
-  cur = Object.assign(blankMatch(), { team: saved.team }); persistDraft('match'); renderForm($('#matchForm')); updateCount();
+  // a fresh form: everything cleared except the scouter's name and the event.
+  // The team is cleared too — the next match is a different robot, and a
+  // number left in the box gets saved against the wrong team.
+  cur = blankMatch(); persistDraft('match'); renderForm($('#matchForm')); updateCount();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   toast(`Saved team ${saved.team}, match ${saved.match}`);
   if (settings.qrAfterSave) showQR([saved], 0);
 };
 $('#btnResetMatch').onclick = () => {
   if (!confirm('Clear this form?')) return;
-  cur = Object.assign(blankMatch(), { team: cur.team });   // keeps the team, the scouter's name and the event
+  cur = blankMatch();   // keeps the scouter's name and the event, nothing else
   persistDraft('match'); renderForm($('#matchForm'));
 };
 $('#btnSavePit').onclick = () => {
