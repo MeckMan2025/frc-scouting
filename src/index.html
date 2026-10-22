@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#111418">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>FRC Scouting</title>
 <style>
 :root{
@@ -131,7 +133,7 @@ details.form[open] summary{margin-bottom:6px}
 </head>
 <body>
 <header>
-  <div class="topbar"><h1>⚙ FRC Scouting</h1><span class="count" id="count"></span></div>
+  <div class="topbar"><h1>⚙ FRC Scouting</h1><span class="count" id="count"></span><span class="count" id="netState" title="Everything is saved on this device; internet is only used to sync or load a schedule."></span></div>
   <nav id="nav">
     <button data-view="sched">Schedule</button>
     <button data-view="match">Match</button>
@@ -1515,6 +1517,26 @@ renderDriveInputs();
 refreshViews(); updateCount(); show(ui.view); applyTabs();
 // ask the browser not to clear our storage
 navigator.storage?.persist?.();
+
+// Works with no internet. A service worker keeps a copy of the whole app on
+// the device, so it opens — and reloads — with nothing to download. A file
+// opened from disk (file://) has no service workers and needs none.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => {
+        if (w.state !== 'installed') return;
+        toast(navigator.serviceWorker.controller
+          ? 'A newer version is saved — reload whenever convenient'
+          : 'Saved on this device — works without internet now');
+      });
+    });
+  }).catch(() => {});
+}
+// Say when there is no connection, so nobody wonders whether their work is safe.
+const netState = () => { const el = $('#netState'); if (el) el.textContent = navigator.onLine ? '' : '· offline, all saved here'; };
+addEventListener('online', netState); addEventListener('offline', netState); netState();
 </script>
 </body>
 </html>
