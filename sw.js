@@ -1,7 +1,7 @@
 /* Service worker: keeps the whole app on the device so it opens, and reloads,
-   with no internet at all. build.py stamps ebb6ff676d28 from the built files,
+   with no internet at all. build.py stamps 9174b57b89e0 from the built files,
    so a new build is a new cache and old copies are dropped. */
-const VERSION = 'ebb6ff676d28';
+const VERSION = '9174b57b89e0';
 const CACHE = 'frc-scouting-' + VERSION;
 const SHELL = ['./', 'index.html', 'FRC-Scouting.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
